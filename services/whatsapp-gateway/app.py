@@ -3,6 +3,7 @@ from fastapi.params import Query, Header
 from fastapi.responses import PlainTextResponse, JSONResponse
 from pydantic import BaseModel
 import os, re, logging
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -79,9 +80,18 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
     # Verificar se o usuário está ativo no banco de dados
     db_user = UserCRUD.get_user_by_number(db, sender)
     
-    if not db_user or not db_user.active:
-        log.info("bloqueado %s (usuário não encontrado ou inativo)", sender)
-        return {"status": "blocked", "reason": "user_not_found_or_inactive"}
+    if not db_user:
+        log.info("bloqueado %s (usuário não encontrado)", sender)
+        return {"status": "blocked", "reason": "user_not_found"}
+    
+    if not db_user.active:
+        log.info("bloqueado %s (usuário inativo)", sender)
+        return {"status": "blocked", "reason": "user_inactive"}
+    
+    # Verificar se o usuário expirou
+    if db_user.expires_at and db_user.expires_at < datetime.now(timezone.utc):
+        log.info("bloqueado %s (usuário expirado em %s)", sender, db_user.expires_at.isoformat())
+        return {"status": "blocked", "reason": "user_expired", "expired_at": db_user.expires_at.isoformat()}
     
     # Registrar interação
     UserCRUD.record_interaction(db, sender)
@@ -143,13 +153,24 @@ def list_users(
     limit: int = Query(100, ge=1, le=1000),
     search: str = Query(None),
     active_only: bool = Query(True),
+    expired_only: bool = Query(False),
+    expiring_soon: bool = Query(False),
+    days_ahead: int = Query(7, ge=1, le=90),
     x_admin_token: str = Header(None),
     db: Session = Depends(get_db)
 ):
     check_admin(x_admin_token)
     
-    users = UserCRUD.get_users(db, skip=skip, limit=limit, active_only=active_only, search=search)
-    total = UserCRUD.get_active_users_count(db) if active_only else db.query(func.count(User.id)).scalar()
+    # Aplicar filtros específicos
+    if expired_only:
+        users = UserCRUD.get_expired_users(db)
+        total = len(users)
+    elif expiring_soon:
+        users = UserCRUD.get_expiring_soon_users(db, days_ahead)
+        total = len(users)
+    else:
+        users = UserCRUD.get_users(db, skip=skip, limit=limit, active_only=active_only, search=search)
+        total = UserCRUD.get_active_users_count(db) if active_only else db.query(func.count(User.id)).scalar()
     
     return UserList(
         users=[UserResponse.model_validate(user) for user in users],
@@ -166,10 +187,57 @@ def get_user_stats(x_admin_token: str = Header(None), db: Session = Depends(get_
     active_users = UserCRUD.get_active_users_count(db)
     inactive_users = total_users - active_users
     
+    # Estatísticas de expiração
+    expired_users = UserCRUD.get_expired_users(db)
+    expiring_soon_users = UserCRUD.get_expiring_soon_users(db, 7)  # próximos 7 dias
+    
     return {
         "total_users": total_users,
         "active_users": active_users,
-        "inactive_users": inactive_users
+        "inactive_users": inactive_users,
+        "expiration_stats": {
+            "expired_users": len(expired_users),
+            "expiring_soon": len(expiring_soon_users),
+            "expiring_in_7_days": len(expiring_soon_users)
+        }
+    }
+
+@app.get("/admin/users/expired")
+def get_expired_users(x_admin_token: str = Header(None), db: Session = Depends(get_db)):
+    """Lista usuários que expiraram"""
+    check_admin(x_admin_token)
+    
+    expired_users = UserCRUD.get_expired_users(db)
+    return {
+        "expired_users": [UserResponse.model_validate(user) for user in expired_users],
+        "count": len(expired_users)
+    }
+
+@app.get("/admin/users/expiring-soon")
+def get_expiring_soon_users(
+    days: int = Query(7, ge=1, le=90, description="Dias para considerar 'expirando em breve'"),
+    x_admin_token: str = Header(None), 
+    db: Session = Depends(get_db)
+):
+    """Lista usuários que expiram em X dias"""
+    check_admin(x_admin_token)
+    
+    expiring_users = UserCRUD.get_expiring_soon_users(db, days)
+    return {
+        "expiring_users": [UserResponse.model_validate(user) for user in expiring_users],
+        "count": len(expiring_users),
+        "days_ahead": days
+    }
+
+@app.post("/admin/users/deactivate-expired")
+def deactivate_expired_users(x_admin_token: str = Header(None), db: Session = Depends(get_db)):
+    """Desativa automaticamente todos os usuários expirados"""
+    check_admin(x_admin_token)
+    
+    count = UserCRUD.deactivate_expired_users(db)
+    return {
+        "message": f"Deactivated {count} expired users",
+        "deactivated_count": count
     }
 
 @app.get("/admin/users/{user_id}", response_model=UserResponse)
