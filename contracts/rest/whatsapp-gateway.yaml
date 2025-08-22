@@ -1,0 +1,57 @@
+openapi: 3.1.0
+info: { title: WhatsApp Gateway, version: 0.1.0 }
+paths:
+  /webhook:
+    get:
+      summary: Verificação do webhook (handshake do Meta)
+      parameters:
+        - in: query; name: hub.mode; schema: {type: string}
+        - in: query; name: hub.verify_token; schema: {type: string}
+        - in: query; name: hub.challenge; schema: {type: string}
+      responses:
+        "200": { description: OK, content: { text/plain: {} } }
+        "403": { description: Token inválido }
+    post:
+      summary: Recebe eventos do WhatsApp
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "200": { description: Aceito (mesmo se bloqueado, não re-tentar) }
+  /admin/allowlist:
+    get:
+      summary: Lista allowlist
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allow: { type: array, items: { type: string } }
+    post:
+      summary: Adiciona número à allowlist
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [number]
+              properties:
+                number: { type: string, example: "+5511999998888" }
+      responses: { "201": { description: Created } }
+    delete:
+      summary: Remove número da allowlist
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - in: query; name: number; schema: { type: string }
+      responses: { "204": { description: No Content } }
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Admin-Token

@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: neoquima_bot
+      POSTGRES_USER: neoquima_user
+      POSTGRES_PASSWORD: neoquima_pass_2024
+    ports: ["5432:5432"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neoquima_user -d neoquima_bot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  whatsapp-gateway:
+    build: ../services/whatsapp-gateway
+    environment:
+      VERIFY_TOKEN: "neoquima_webhook_2024"
+      ADMIN_TOKEN: "EAAWKVjmeZCv8BPFh8WMA5IcClxJOLmh2PuvdW3OFAWZBgKZAnPhlTlzmrpjicnMJb8W5KHOK6D33V1i7sSsvAuq5WYgrh4JZAnrnnVd1jyM2HEVZC55ZA5V0E7SqQEslnlOEXPFHWDs7Mc0KjeHZBRGVvOgf3dF5837RnFQ1ESSwjckuZAIfICkbZC4UiZAt3EuMpB"
+      DATABASE_URL: "postgresql://neoquima_user:neoquima_pass_2024@postgres:5432/neoquima_bot"
+      # allowlist inicial (opcional). Ex.: +5511999998888,+353831112222
+      ALLOWLIST: ""
+    ports: ["8081:8000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_data:
