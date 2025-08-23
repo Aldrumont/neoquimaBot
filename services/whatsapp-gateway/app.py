@@ -12,6 +12,9 @@ from database import get_db, create_tables, UserCRUD
 from database.schemas import UserCreate, UserUpdate, UserResponse, UserList
 from database.models import User
 
+# Importação do serviço WhatsApp
+from whatsapp_service import whatsapp_service
+
 # ========= Config =========
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "changeme")      # usado no GET /webhook (handshake)
 ADMIN_TOKEN  = os.getenv("ADMIN_TOKEN", "adminchangeme")  # header X-Admin-Token
@@ -65,42 +68,107 @@ def verify(
 @app.post("/webhook")
 async def webhook(req: Request, db: Session = Depends(get_db)):
     body = await req.json()
-    # Extrair números de quem enviou (depende do payload do WhatsApp)
-    # Ex.: body["entry"][0]["changes"][0]["value"]["messages"][0]["from"]
+    
+    # Extrair números de quem enviou e mensagem
     try:
         entries = body.get("entry", [])
         changes = entries[0]["changes"][0]["value"]
-        wa_from = changes["messages"][0]["from"]
+        message_data = changes["messages"][0]
+        wa_from = message_data["from"]
         sender = norm(wa_from)
-    except Exception:
+        
+        # Extrair texto da mensagem
+        message_text = ""
+        if "text" in message_data:
+            message_text = message_data["text"].get("body", "")
+        
+    except Exception as e:
         # Mesmo com erro de parsing, retorne 200 para evitar re-entregas infinitas
-        log.warning("payload inesperado: %s", body)
-        return {"status": "ignored"}
+        log.warning("payload inesperado: %s, erro: %s", body, str(e))
+        return {"status": "ignored", "message_sent": False}
 
     # Verificar se o usuário está ativo no banco de dados
     db_user = UserCRUD.get_user_by_number(db, sender)
     
     if not db_user:
         log.info("bloqueado %s (usuário não encontrado)", sender)
-        return {"status": "blocked", "reason": "user_not_found"}
+        # Enviar mensagem informando que não está cadastrado
+        send_result = whatsapp_service.send_user_not_found_message(sender)
+        return {
+            "status": "blocked", 
+            "reason": "user_not_found",
+            "message_sent": send_result["success"]
+        }
     
     if not db_user.active:
         log.info("bloqueado %s (usuário inativo)", sender)
-        return {"status": "blocked", "reason": "user_inactive"}
+        # Enviar mensagem informando que está inativo
+        send_result = whatsapp_service.send_user_inactive_message(sender)
+        return {
+            "status": "blocked", 
+            "reason": "user_inactive",
+            "message_sent": send_result["success"]
+        }
     
     # Verificar se o usuário expirou
     if db_user.expires_at and db_user.expires_at < datetime.now(timezone.utc):
         log.info("bloqueado %s (usuário expirado em %s)", sender, db_user.expires_at.isoformat())
-        return {"status": "blocked", "reason": "user_expired", "expired_at": db_user.expires_at.isoformat()}
+        # Enviar mensagem informando que expirou
+        send_result = whatsapp_service.send_user_expired_message(sender, db_user.expires_at.isoformat())
+        return {
+            "status": "blocked", 
+            "reason": "user_expired", 
+            "expired_at": db_user.expires_at.isoformat(),
+            "message_sent": send_result["success"]
+        }
     
     # Registrar interação
     UserCRUD.record_interaction(db, sender)
     
-    # >>> AQUI entraria o repasse para o Chat Orchestrator <<<
-    # Exemplo fake:
-    log.info("autorizado %s -> encaminhar ao orchestrator", sender)
-    # requests.post(ORCHESTRATOR_URL, json={...})
-    return {"status": "accepted", "user_id": db_user.id}
+    # Verificar se é mensagem de teste
+    if whatsapp_service.is_test_message(message_text):
+        log.info("modo teste ativado para %s", sender)
+        # Enviar resposta de teste
+        send_result = whatsapp_service.send_test_response(sender, message_text, db_user)
+        return {
+            "status": "test_mode",
+            "user_id": db_user.id,
+            "message_sent": send_result["success"],
+            "test_info": {
+                "number": sender,
+                "message": message_text,
+                "user_data": {
+                    "id": db_user.id,
+                    "name": db_user.name,
+                    "company": db_user.company,
+                    "active": db_user.active,
+                    "role": db_user.role
+                }
+            }
+        }
+    
+    # >>> AQUI entraria o repasse para o Chat Orchestrator/LLM <<<
+    # Por enquanto, apenas log
+    log.info("autorizado %s -> encaminhar ao LLM: '%s'", sender, message_text)
+    
+    # TODO: Integrar com módulo LLM
+    # llm_response = llm_service.process_message(db_user.id, sender, message_text)
+    # whatsapp_service.send_llm_response(sender, llm_response.text)
+    
+    # Resposta temporária até integrar com LLM
+    temp_response = (
+        f"Olá {db_user.name or 'usuário'}! 👋\n\n"
+        f"Recebi sua mensagem: \"{message_text}\"\n\n"
+        f"🔧 O módulo de IA ainda está sendo configurado.\n"
+        f"Em breve você terá respostas inteligentes!"
+    )
+    send_result = whatsapp_service.send_text_message(sender, temp_response)
+    
+    return {
+        "status": "accepted", 
+        "user_id": db_user.id,
+        "message_sent": send_result["success"]
+    }
 
 # ========= Admin (API key simples) =========
 def check_admin(token: str = None):

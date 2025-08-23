@@ -15,9 +15,17 @@ paths:
       summary: Recebe eventos do WhatsApp
       requestBody:
         required: true
-        content: { application/json: { schema: { type: object } } }
+        content: 
+          application/json: 
+            schema: 
+              $ref: '#/components/schemas/WhatsAppWebhook'
       responses:
-        "200": { description: Aceito (mesmo se bloqueado, não re-tentar) }
+        "200": 
+          description: Aceito (mesmo se bloqueado, não re-tentar)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
   /admin/allowlist:
     get:
       summary: Lista allowlist
@@ -49,9 +57,306 @@ paths:
       parameters:
         - in: query; name: number; schema: { type: string }
       responses: { "204": { description: No Content } }
+  
+  /admin/users:
+    get:
+      summary: Lista usuários
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - in: query; name: skip; schema: { type: integer, default: 0 }
+        - in: query; name: limit; schema: { type: integer, default: 100 }
+        - in: query; name: search; schema: { type: string }
+        - in: query; name: active_only; schema: { type: boolean, default: true }
+        - in: query; name: expired_only; schema: { type: boolean, default: false }
+        - in: query; name: expiring_soon; schema: { type: boolean, default: false }
+        - in: query; name: days_ahead; schema: { type: integer, default: 7 }
+      responses:
+        "200":
+          description: Lista de usuários
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserList'
+    post:
+      summary: Criar usuário
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        "201":
+          description: Usuário criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+  
+  /admin/users/stats:
+    get:
+      summary: Estatísticas de usuários
+      security: [{ ApiKeyAuth: [] }]
+      responses:
+        "200":
+          description: Estatísticas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserStats'
+  
+  /admin/users/expired:
+    get:
+      summary: Lista usuários expirados
+      security: [{ ApiKeyAuth: [] }]
+      responses:
+        "200":
+          description: Usuários expirados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expired_users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserResponse'
+                  count: { type: integer }
+  
+  /admin/users/expiring-soon:
+    get:
+      summary: Lista usuários expirando em breve
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - in: query; name: days; schema: { type: integer, default: 7 }
+      responses:
+        "200":
+          description: Usuários expirando
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expiring_users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserResponse'
+                  count: { type: integer }
+                  days_ahead: { type: integer }
+  
+  /admin/users/deactivate-expired:
+    post:
+      summary: Desativa usuários expirados automaticamente
+      security: [{ ApiKeyAuth: [] }]
+      responses:
+        "200":
+          description: Usuários desativados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  deactivated_count: { type: integer }
+  
+  /admin/users/{user_id}:
+    get:
+      summary: Obter usuário por ID
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - in: path; name: user_id; required: true; schema: { type: integer }
+      responses:
+        "200":
+          description: Usuário encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        "404": { description: Usuário não encontrado }
+    put:
+      summary: Atualizar usuário
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - in: path; name: user_id; required: true; schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        "200":
+          description: Usuário atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        "404": { description: Usuário não encontrado }
+    delete:
+      summary: Deletar usuário
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - in: path; name: user_id; required: true; schema: { type: integer }
+      responses:
+        "204": { description: Usuário deletado }
+        "404": { description: Usuário não encontrado }
+  
+  /admin/users/{user_id}/deactivate:
+    patch:
+      summary: Desativar usuário com motivo
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - in: path; name: user_id; required: true; schema: { type: integer }
+        - in: query; name: reason; required: true; schema: { type: string }
+      responses:
+        "200":
+          description: Usuário desativado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        "404": { description: Usuário não encontrado }
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Serviço funcionando
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  allow_count: { type: integer }
+
 components:
   securitySchemes:
     ApiKeyAuth:
       type: apiKey
       in: header
       name: X-Admin-Token
+  
+  schemas:
+    WhatsAppWebhook:
+      type: object
+      properties:
+        entry:
+          type: array
+          items:
+            type: object
+            properties:
+              changes:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    value:
+                      type: object
+                      properties:
+                        messages:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              from: { type: string }
+                              text:
+                                type: object
+                                properties:
+                                  body: { type: string }
+    
+    WebhookResponse:
+      type: object
+      properties:
+        status: 
+          type: string
+          enum: ["accepted", "blocked", "test_mode", "ignored"]
+        user_id: { type: integer }
+        reason: 
+          type: string
+          enum: ["user_not_found", "user_inactive", "user_expired"]
+        expired_at: { type: string, format: date-time }
+        message_sent: { type: boolean }
+        test_info:
+          type: object
+          properties:
+            number: { type: string }
+            message: { type: string }
+            user_data: { type: object }
+    
+    UserCreate:
+      type: object
+      required: [number]
+      properties:
+        number: { type: string, example: "+5511999998888" }
+        name: { type: string }
+        company: { type: string }
+        note: { type: string }
+        added_by: { type: string }
+        expires_at: { type: string, format: date-time }
+        active: { type: boolean, default: true }
+        role: { type: string, default: "user" }
+        status_reason: { type: string }
+        tags: 
+          type: array
+          items: { type: string }
+    
+    UserUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        company: { type: string }
+        note: { type: string }
+        expires_at: { type: string, format: date-time }
+        active: { type: boolean }
+        role: { type: string }
+        status_reason: { type: string }
+        tags: 
+          type: array
+          items: { type: string }
+    
+    UserResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        number: { type: string }
+        name: { type: string }
+        company: { type: string }
+        note: { type: string }
+        added_by: { type: string }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        last_interact: { type: string, format: date-time }
+        interact_count: { type: integer }
+        active: { type: boolean }
+        role: { type: string }
+        status_reason: { type: string }
+        tags: 
+          type: array
+          items: { type: string }
+    
+    UserList:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserResponse'
+        total: { type: integer }
+        page: { type: integer }
+        per_page: { type: integer }
+    
+    UserStats:
+      type: object
+      properties:
+        total_users: { type: integer }
+        active_users: { type: integer }
+        inactive_users: { type: integer }
+        expiration_stats:
+          type: object
+          properties:
+            expired_users: { type: integer }
+            expiring_soon: { type: integer }
+            expiring_in_7_days: { type: integer }
