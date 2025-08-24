@@ -1,0 +1,546 @@
+openapi: 3.1.0
+info:
+  title: Neoquima Shared Database API
+  description: |
+    API compartilhada para acesso centralizado ao banco de dados PostgreSQL.
+    
+    ## Schemas Disponíveis:
+    - **whatsapp**: Usuários, mensagens e webhooks do WhatsApp
+    - **llm**: Conversas, contexto e histórico do LLM
+    - **analytics**: Métricas, logs e relatórios
+    - **auth**: Autenticação e permissões
+    - **public**: Tabelas compartilhadas entre módulos
+    
+    ## Autenticação:
+    Todos os endpoints requerem autenticação via Bearer Token JWT.
+    
+    ## Rate Limiting:
+    - 100 requests por minuto por IP
+    - 1000 requests por hora por usuário
+  version: 1.0.0
+  contact:
+    name: Neoquima Development Team
+    email: dev@neoquima.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local Development
+  - url: https://api.neoquima.com
+    description: Production
+
+security:
+  - BearerAuth: []
+
+paths:
+  /:
+    get:
+      summary: Informações da API
+      description: Endpoint raiz com informações sobre a API
+      responses:
+        "200":
+          description: Informações da API
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiInfo'
+  
+  /health:
+    get:
+      summary: Health Check
+      description: Verifica o status de saúde da API e banco de dados
+      tags: [System]
+      responses:
+        "200":
+          description: API funcionando normalmente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+        "503":
+          description: API com problemas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+  
+  /schemas:
+    get:
+      summary: Listar Schemas
+      description: Lista todos os schemas disponíveis no banco
+      tags: [Database]
+      responses:
+        "200":
+          description: Lista de schemas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaList'
+  
+  /whatsapp/users:
+    get:
+      summary: Listar Usuários WhatsApp
+      description: Lista usuários do módulo WhatsApp
+      tags: [WhatsApp]
+      parameters:
+        - in: query
+          name: skip
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Número de registros para pular
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 1000
+          description: Número máximo de registros
+        - in: query
+          name: active
+          schema:
+            type: boolean
+          description: Filtrar por usuários ativos
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Buscar por nome ou número
+      responses:
+        "200":
+          description: Lista de usuários
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+    
+    post:
+      summary: Criar Usuário WhatsApp
+      description: Cria um novo usuário no módulo WhatsApp
+      tags: [WhatsApp]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        "201":
+          description: Usuário criado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "409":
+          description: Usuário já existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /whatsapp/users/{user_id}:
+    get:
+      summary: Obter Usuário WhatsApp
+      description: Obtém detalhes de um usuário específico
+      tags: [WhatsApp]
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+          description: ID do usuário
+      responses:
+        "200":
+          description: Detalhes do usuário
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    
+    put:
+      summary: Atualizar Usuário WhatsApp
+      description: Atualiza dados de um usuário existente
+      tags: [WhatsApp]
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+          description: ID do usuário
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        "200":
+          description: Usuário atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    
+    delete:
+      summary: Deletar Usuário WhatsApp
+      description: Remove um usuário do sistema
+      tags: [WhatsApp]
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+          description: ID do usuário
+      responses:
+        "204":
+          description: Usuário removido com sucesso
+        "404":
+          $ref: '#/components/responses/NotFound'
+  
+  /auth/login:
+    post:
+      summary: Login
+      description: Autentica um usuário e retorna token JWT
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          description: Login realizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        "401":
+          description: Credenciais inválidas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token JWT obtido via login
+  
+  schemas:
+    ApiInfo:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Neoquima Shared Database API"
+        version:
+          type: string
+          example: "1.0.0"
+        status:
+          type: string
+          example: "running"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-08-23T10:00:00Z"
+    
+    HealthCheck:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy, degraded]
+          example: "healthy"
+        service:
+          type: string
+          example: "shared-database-api"
+        database:
+          type: string
+          enum: [connected, disconnected, error]
+          example: "connected"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-08-23T10:00:00Z"
+        uptime:
+          type: number
+          description: Tempo de funcionamento em segundos
+          example: 3600
+    
+    SchemaList:
+      type: object
+      properties:
+        schemas:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaInfo'
+    
+    SchemaInfo:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "whatsapp"
+        description:
+          type: string
+          example: "Usuários, mensagens e webhooks do WhatsApp"
+        tables:
+          type: array
+          items:
+            type: string
+          example: ["users", "messages", "webhooks"]
+        record_count:
+          type: integer
+          description: Número total de registros no schema
+          example: 150
+    
+    UserCreate:
+      type: object
+      required:
+        - number
+        - name
+      properties:
+        number:
+          type: string
+          pattern: '^\+[1-9]\d{1,14}$'
+          description: Número de telefone no formato internacional
+          example: "+5511999998888"
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: Nome completo do usuário
+          example: "João Silva"
+        company:
+          type: string
+          maxLength: 100
+          description: Nome da empresa
+          example: "Tech Corp"
+        note:
+          type: string
+          maxLength: 500
+          description: Observações sobre o usuário
+        role:
+          type: string
+          enum: [user, admin, moderator]
+          default: "user"
+          description: Papel do usuário no sistema
+        active:
+          type: boolean
+          default: true
+          description: Status ativo/inativo
+        expires_at:
+          type: string
+          format: date-time
+          description: Data de expiração do acesso
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags para categorização
+          example: ["vip", "beta-tester"]
+    
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        company:
+          type: string
+          maxLength: 100
+        note:
+          type: string
+          maxLength: 500
+        role:
+          type: string
+          enum: [user, admin, moderator]
+        active:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+        tags:
+          type: array
+          items:
+            type: string
+    
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        number:
+          type: string
+          example: "+5511999998888"
+        name:
+          type: string
+          example: "João Silva"
+        company:
+          type: string
+          example: "Tech Corp"
+        note:
+          type: string
+          example: "Usuário VIP"
+        role:
+          type: string
+          example: "user"
+        active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-08-23T10:00:00Z"
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_interact:
+          type: string
+          format: date-time
+          nullable: true
+        interact_count:
+          type: integer
+          example: 15
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["vip", "beta-tester"]
+    
+    UserList:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserResponse'
+        total:
+          type: integer
+          description: Total de usuários
+          example: 150
+        skip:
+          type: integer
+          description: Registros pulados
+          example: 0
+        limit:
+          type: integer
+          description: Limite de registros
+          example: 100
+    
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: Nome de usuário ou email
+          example: "admin@neoquima.com"
+        password:
+          type: string
+          description: Senha do usuário
+          example: "minha_senha_123"
+    
+    LoginResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: Token JWT para autenticação
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        token_type:
+          type: string
+          default: "bearer"
+          example: "bearer"
+        expires_in:
+          type: integer
+          description: Tempo de expiração em segundos
+          example: 3600
+        user:
+          $ref: '#/components/schemas/UserResponse'
+    
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Descrição do erro
+          example: "Usuário não encontrado"
+        code:
+          type: string
+          description: Código do erro
+          example: "USER_NOT_FOUND"
+        details:
+          type: object
+          description: Detalhes adicionais do erro
+  
+  responses:
+    Unauthorized:
+      description: Não autorizado - Token inválido ou expirado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    
+    Forbidden:
+      description: Proibido - Usuário sem permissão
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    
+    NotFound:
+      description: Não encontrado - Recurso solicitado não existe
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    
+    BadRequest:
+      description: Requisição inválida - Dados incorretos
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+tags:
+  - name: System
+    description: Endpoints do sistema (health, info)
+  - name: Database
+    description: Operações relacionadas ao banco de dados
+  - name: WhatsApp
+    description: Gestão de usuários e dados do WhatsApp
+  - name: Authentication
+    description: Autenticação e autorização
+  - name: LLM
+    description: Dados do módulo de Language Model
+  - name: Analytics
+    description: Métricas e relatórios do sistema 

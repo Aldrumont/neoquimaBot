@@ -1,38 +1,73 @@
 services:
-  postgres:
+  shared-postgres:
     image: postgres:15-alpine
+    container_name: shared-postgres
     environment:
-      POSTGRES_DB: neoquima_bot
-      POSTGRES_USER: neoquima_user
-      POSTGRES_PASSWORD: neoquima_pass_2024
-    ports: ["5432:5432"]
+      POSTGRES_DB: neoquima_shared
+      POSTGRES_USER: neoquima_admin
+      POSTGRES_PASSWORD: neoquima_admin_pass_2024
+      POSTGRES_MULTIPLE_DATABASES: whatsapp,llm,analytics,auth
+    ports: ["5433:5432"]
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - shared_postgres_data:/var/lib/postgresql/data
+      - /home/ajunior/Documents/dev/neoquimaBot/services/shared-database/postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U neoquima_user -d neoquima_bot"]
+      test: ["CMD-SHELL", "pg_isready -U neoquima_admin -d neoquima_shared"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - shared-network
+
+  shared-database-api:
+    build: ../services/shared-database
+    container_name: shared-database-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://neoquima_admin:neoquima_admin_pass_2024@shared-postgres:5432/neoquima_shared}
+      - SECRET_KEY=${SECRET_KEY:-neoquima-secret-key-2024}
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - DEBUG=false
+    depends_on:
+      shared-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - shared-network
 
   whatsapp-gateway:
     build: ../services/whatsapp-gateway
     environment:
       VERIFY_TOKEN: ${VERIFY_TOKEN:-neoquima_webhook_2024}
       ADMIN_TOKEN: ${ADMIN_TOKEN}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://neoquima_user:neoquima_pass_2024@postgres:5432/neoquima_bot}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://neoquima_admin:neoquima_admin_pass_2024@shared-postgres:5432/neoquima_shared}
+      SHARED_DATABASE_URL: http://shared-database-api:8000
       WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}
       WHATSAPP_PHONE_ID: ${WHATSAPP_PHONE_ID}
       # allowlist inicial (opcional). Ex.: +5511999998888,+353831112222
       ALLOWLIST: ""
     ports: ["8081:8000"]
     depends_on:
-      postgres:
+      shared-postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 3s
       retries: 5
+    networks:
+      - shared-network
 
 volumes:
-  postgres_data:
+  shared_postgres_data:
+
+networks:
+  shared-network:
+    driver: bridge

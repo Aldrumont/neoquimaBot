@@ -6,26 +6,13 @@ Scripts para automatizar a configuração do ngrok e orientar a configuração d
 
 ### 🐧 Linux/Mac
 - **`setup-webhook.sh`** - Script completo com verificações e logs em tempo real
-- **`setup-webhook-simple.sh`** - Versão simplificada e rápida
-
-### 🪟 Windows
-- **`setup-webhook.ps1`** - Script PowerShell completo
 
 ## 🚀 Como Usar
 
 ### Linux/Mac
 ```bash
-# Versão completa (recomendada)
+# Script completo (recomendado)
 ./scripts/setup-webhook.sh
-
-# Versão rápida
-./scripts/setup-webhook-simple.sh
-```
-
-### Windows (PowerShell)
-```powershell
-# Executar como administrador
-.\scripts\setup-webhook.ps1
 ```
 
 ## ✨ O que os Scripts Fazem
@@ -90,9 +77,6 @@ snap install ngrok
 
 # macOS
 brew install ngrok
-
-# Windows
-winget install ngrok
 ```
 
 ### Porta 8081 ocupada

@@ -7,10 +7,13 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-# Importações do banco de dados
+# Importações do banco de dados (mantidas para compatibilidade temporária)
 from database import get_db, create_tables, UserCRUD
 from database.schemas import UserCreate, UserUpdate, UserResponse, UserList
 from database.models import User
+
+# Importação do serviço compartilhado
+from shared_database_service import SharedDatabaseService
 
 # Importação do serviço WhatsApp
 from whatsapp_service import whatsapp_service
@@ -39,7 +42,10 @@ if ALLOWLIST_ENV:
 app = FastAPI(title="WhatsApp Gateway", version="0.1.0")
 log = logging.getLogger("uvicorn.error")
 
-# Criar tabelas na inicialização
+# Instância do serviço compartilhado
+shared_db = SharedDatabaseService()
+
+# Criar tabelas na inicialização (mantido para compatibilidade)
 @app.on_event("startup")
 async def startup_event():
     create_tables()
@@ -87,8 +93,8 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
         log.warning("payload inesperado: %s, erro: %s", body, str(e))
         return {"status": "ignored", "message_sent": False}
 
-    # Verificar se o usuário está ativo no banco de dados
-    db_user = UserCRUD.get_user_by_number(db, sender)
+    # Verificar se o usuário está ativo no banco de dados (via API compartilhada)
+    db_user = shared_db.get_user_by_number(sender)
     
     if not db_user:
         log.info("bloqueado %s (usuário não encontrado)", sender)
@@ -100,7 +106,7 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
             "message_sent": send_result["success"]
         }
     
-    if not db_user.active:
+    if not db_user.get("active", False):
         log.info("bloqueado %s (usuário inativo)", sender)
         # Enviar mensagem informando que está inativo
         send_result = whatsapp_service.send_user_inactive_message(sender)
@@ -111,19 +117,25 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
         }
     
     # Verificar se o usuário expirou
-    if db_user.expires_at and db_user.expires_at < datetime.now(timezone.utc):
-        log.info("bloqueado %s (usuário expirado em %s)", sender, db_user.expires_at.isoformat())
-        # Enviar mensagem informando que expirou
-        send_result = whatsapp_service.send_user_expired_message(sender, db_user.expires_at.isoformat())
-        return {
-            "status": "blocked", 
-            "reason": "user_expired", 
-            "expired_at": db_user.expires_at.isoformat(),
-            "message_sent": send_result["success"]
-        }
+    expires_at = db_user.get("expires_at")
+    if expires_at:
+        try:
+            expires_datetime = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+            if expires_datetime < datetime.now(timezone.utc):
+                log.info("bloqueado %s (usuário expirado em %s)", sender, expires_at)
+                # Enviar mensagem informando que expirou
+                send_result = whatsapp_service.send_user_expired_message(sender, expires_at)
+                return {
+                    "status": "blocked", 
+                    "reason": "user_expired", 
+                    "expired_at": expires_at,
+                    "message_sent": send_result["success"]
+                }
+        except ValueError:
+            log.warning("formato de data inválido para %s: %s", sender, expires_at)
     
-    # Registrar interação
-    UserCRUD.record_interaction(db, sender)
+    # Registrar interação (via API compartilhada)
+    shared_db.record_interaction(db_user["id"], message_text)
     
     # Verificar se é mensagem de teste
     if whatsapp_service.is_test_message(message_text):
@@ -132,17 +144,17 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
         send_result = whatsapp_service.send_test_response(sender, message_text, db_user)
         return {
             "status": "test_mode",
-            "user_id": db_user.id,
+            "user_id": db_user["id"],
             "message_sent": send_result["success"],
             "test_info": {
                 "number": sender,
                 "message": message_text,
                 "user_data": {
-                    "id": db_user.id,
-                    "name": db_user.name,
-                    "company": db_user.company,
-                    "active": db_user.active,
-                    "role": db_user.role
+                    "id": db_user["id"],
+                    "name": db_user.get("name", "N/A"),
+                    "company": db_user.get("company", "N/A"),
+                    "active": db_user.get("active", False),
+                    "role": db_user.get("role", "N/A")
                 }
             }
         }
@@ -157,7 +169,7 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
     
     # Resposta temporária até integrar com LLM
     temp_response = (
-        f"Olá {db_user.name or 'usuário'}! 👋\n\n"
+        f"Olá {db_user.get('name', 'usuário')}! 👋\n\n"
         f"Recebi sua mensagem: \"{message_text}\"\n\n"
         f"🔧 O módulo de IA ainda está sendo configurado.\n"
         f"Em breve você terá respostas inteligentes!"
@@ -166,7 +178,7 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
     
     return {
         "status": "accepted", 
-        "user_id": db_user.id,
+        "user_id": db_user["id"],
         "message_sent": send_result["success"]
     }
 
@@ -248,25 +260,20 @@ def list_users(
     )
 
 @app.get("/admin/users/stats")
-def get_user_stats(x_admin_token: str = Header(None), db: Session = Depends(get_db)):
+def get_user_stats(x_admin_token: str = Header(None)):
     check_admin(x_admin_token)
     
-    total_users = db.query(func.count(User.id)).scalar()
-    active_users = UserCRUD.get_active_users_count(db)
-    inactive_users = total_users - active_users
-    
-    # Estatísticas de expiração
-    expired_users = UserCRUD.get_expired_users(db)
-    expiring_soon_users = UserCRUD.get_expiring_soon_users(db, 7)  # próximos 7 dias
+    # Usar o serviço compartilhado para estatísticas
+    stats = shared_db.get_users_stats()
     
     return {
-        "total_users": total_users,
-        "active_users": active_users,
-        "inactive_users": inactive_users,
+        "total_users": stats["total"],
+        "active_users": stats["active"],
+        "inactive_users": stats["inactive"],
         "expiration_stats": {
-            "expired_users": len(expired_users),
-            "expiring_soon": len(expiring_soon_users),
-            "expiring_in_7_days": len(expiring_soon_users)
+            "expired_users": 0,  # TODO: Implementar quando a API compartilhada suportar
+            "expiring_soon": 0,  # TODO: Implementar quando a API compartilhada suportar
+            "expiring_in_7_days": 0  # TODO: Implementar quando a API compartilhada suportar
         }
     }
 

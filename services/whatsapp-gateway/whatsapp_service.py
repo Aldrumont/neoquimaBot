@@ -130,50 +130,61 @@ class WhatsAppService:
         )
         return self.send_text_message(to_number, message)
     
-    def send_test_response(self, to_number: str, message: str, user: User) -> Dict[str, Any]:
+    def send_test_response(self, to_number: str, message: str, user: Dict[str, Any]) -> Dict[str, Any]:
         """Envia resposta de teste com informações do usuário"""
         
         # Formatar última interação
         last_interact = "Nunca"
-        if user.last_interact:
+        if user.get("last_interact"):
             try:
-                last_date = user.last_interact
+                last_date_str = user["last_interact"]
+                # Converter string ISO para datetime
+                last_date = datetime.fromisoformat(last_date_str.replace('Z', '+00:00'))
                 last_interact = last_date.strftime("%d/%m/%Y às %H:%M")
             except:
-                last_interact = str(user.last_interact)
+                last_interact = str(user["last_interact"])
         
         # Formatar tags
-        tags_str = ", ".join(user.tags) if user.tags else "Nenhuma"
+        tags = user.get("tags", [])
+        tags_str = ", ".join(tags) if tags else "Nenhuma"
         
         # Status de expiração
         expiration_status = "Sem expiração"
-        if user.expires_at:
+        expires_at = user.get("expires_at")
+        if expires_at:
             try:
-                exp_date = user.expires_at
+                exp_date = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
                 if exp_date < datetime.now(exp_date.tzinfo):
                     expiration_status = f"❌ Expirado em {exp_date.strftime('%d/%m/%Y')}"
                 else:
                     expiration_status = f"✅ Expira em {exp_date.strftime('%d/%m/%Y')}"
             except:
-                expiration_status = f"Expira em {user.expires_at}"
+                expiration_status = f"Expira em {expires_at}"
+        
+        # Formatar data de cadastro
+        created_at_str = "N/A"
+        try:
+            created_at = datetime.fromisoformat(user.get("created_at", "").replace('Z', '+00:00'))
+            created_at_str = created_at.strftime("%d/%m/%Y às %H:%M")
+        except:
+            created_at_str = str(user.get("created_at", "N/A"))
         
         test_message = (
             f"🧪 TESTE EXECUTADO COM SUCESSO\n\n"
             f"📱 Número: {to_number}\n"
             f"💬 Mensagem recebida: \"{message}\"\n\n"
             f"📊 DADOS DO CADASTRO:\n"
-            f"• ID: {user.id}\n"
-            f"• Nome: {user.name or 'Não informado'}\n"
-            f"• Empresa: {user.company or 'Não informada'}\n"
-            f"• Role: {user.role}\n"
-            f"• Status: {'✅ Ativo' if user.active else '❌ Inativo'}\n"
-            f"• Cadastrado por: {user.added_by or 'Sistema'}\n"
-            f"• Data de cadastro: {user.created_at.strftime('%d/%m/%Y às %H:%M')}\n"
+            f"• ID: {user.get('id', 'N/A')}\n"
+            f"• Nome: {user.get('name', 'Não informado')}\n"
+            f"• Empresa: {user.get('company', 'Não informada')}\n"
+            f"• Role: {user.get('role', 'N/A')}\n"
+            f"• Status: {'✅ Ativo' if user.get('active', False) else '❌ Inativo'}\n"
+            f"• Data de cadastro: {created_at_str}\n"
             f"• Última interação: {last_interact}\n"
-            f"• Total de mensagens: {user.interact_count}\n"
+            f"• Total de mensagens: {user.get('interact_count', 0)}\n"
             f"• Expiração: {expiration_status}\n"
             f"• Tags: {tags_str}\n"
-            f"• Observações: {user.note or 'Nenhuma'}\n\n"
+            f"• Observações: {user.get('note', 'Nenhuma')}\n\n"
             f"✅ Sistema funcionando corretamente!"
         )
         
