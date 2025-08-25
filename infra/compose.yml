@@ -65,6 +65,27 @@ services:
     networks:
       - shared-network
 
+  admin-ui:
+    build: ../services/admin-ui
+    container_name: infra-admin-ui
+    ports: ["8080:8080"]
+    environment:
+      - SHARED_DATABASE_URL=http://shared-database-api:8000
+      - SECRET_KEY=${SECRET_KEY:-admin-secret-key-2024}
+      - DEBUG=${DEBUG:-false}
+      - ADMIN_UI_PORT=8080
+    depends_on:
+      shared-database-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - shared-network
+
 volumes:
   shared_postgres_data:
 
