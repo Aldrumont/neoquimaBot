@@ -1,0 +1,407 @@
+openapi: 3.0.3
+info:
+  title: Neoquima LLM Service API
+  description: API para processamento de mensagens via LLM com integração RAG
+  version: 1.0.0
+  contact:
+    name: Neoquima Team
+    email: dev@neoquima.com
+
+servers:
+  - url: http://localhost:8003
+    description: LLM Service Local
+  - url: http://llm-service:8003
+    description: LLM Service Container
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Verifica o status do serviço LLM
+      responses:
+        '200':
+          description: Serviço funcionando
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  service:
+                    type: string
+                    example: "llm-service"
+                  llm_provider:
+                    type: string
+                    example: "openai"
+                  rag_status:
+                    type: string
+                    example: "connected"
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /chat:
+    post:
+      summary: Processar mensagem
+      description: Processa uma mensagem via LLM com contexto RAG
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Resposta processada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+
+  /chat/stream:
+    post:
+      summary: Processar mensagem (streaming)
+      description: Processa uma mensagem via LLM com resposta em streaming
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Resposta em streaming
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /chat/history:
+    get:
+      summary: Histórico de conversas
+      description: Obtém histórico de conversas de um usuário
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Histórico de conversas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatHistoryResponse'
+
+  /admin/config:
+    get:
+      summary: Obter configurações LLM
+      description: Obtém configurações atuais do LLM
+      responses:
+        '200':
+          description: Configurações do LLM
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMConfig'
+    
+    put:
+      summary: Atualizar configurações LLM
+      description: Atualiza configurações do LLM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMConfig'
+      responses:
+        '200':
+          description: Configurações atualizadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMConfig'
+
+  /admin/models:
+    get:
+      summary: Listar modelos disponíveis
+      description: Lista modelos LLM disponíveis para uso
+      responses:
+        '200':
+          description: Lista de modelos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  models:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LLMModel'
+
+  /admin/rag/collections:
+    get:
+      summary: Listar coleções RAG
+      description: Lista coleções disponíveis para contexto RAG
+      responses:
+        '200':
+          description: Lista de coleções
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collections:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RAGCollection'
+
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - user_id
+        - message
+      properties:
+        user_id:
+          type: string
+          description: ID do usuário
+        message:
+          type: string
+          description: Mensagem do usuário
+        context:
+          type: object
+          description: Contexto adicional da conversa
+        rag_collection:
+          type: string
+          description: Nome da coleção RAG para usar como contexto
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 0.7
+          description: Temperatura da geração
+        max_tokens:
+          type: integer
+          minimum: 1
+          maximum: 4000
+          default: 1000
+          description: Máximo de tokens na resposta
+
+    ChatResponse:
+      type: object
+      properties:
+        response:
+          type: string
+          description: Resposta gerada pelo LLM
+        user_id:
+          type: string
+          description: ID do usuário
+        message_id:
+          type: string
+          description: ID único da mensagem
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp da resposta
+        processing_time:
+          type: number
+          description: Tempo de processamento em segundos
+        tokens_used:
+          type: object
+          properties:
+            prompt:
+              type: integer
+              description: Tokens usados no prompt
+            completion:
+              type: integer
+              description: Tokens usados na resposta
+            total:
+              type: integer
+              description: Total de tokens
+        rag_context:
+          type: object
+          properties:
+            used:
+              type: boolean
+              description: Se o contexto RAG foi usado
+            collection:
+              type: string
+              description: Nome da coleção usada
+            documents_found:
+              type: integer
+              description: Número de documentos encontrados
+            top_scores:
+              type: array
+              items:
+                type: number
+              description: Scores dos documentos mais relevantes
+
+    ChatHistoryResponse:
+      type: object
+      properties:
+        conversations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatConversation'
+        total:
+          type: integer
+          description: Total de conversas
+        has_more:
+          type: boolean
+          description: Se há mais conversas para carregar
+
+    ChatConversation:
+      type: object
+      properties:
+        conversation_id:
+          type: string
+          description: ID único da conversa
+        user_id:
+          type: string
+          description: ID do usuário
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+        created_at:
+          type: string
+          format: date-time
+          description: Data de criação
+        updated_at:
+          type: string
+          format: date-time
+          description: Última atualização
+
+    ChatMessage:
+      type: object
+      properties:
+        message_id:
+          type: string
+          description: ID único da mensagem
+        role:
+          type: string
+          enum: [user, assistant, system]
+          description: Papel da mensagem
+        content:
+          type: string
+          description: Conteúdo da mensagem
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp da mensagem
+        metadata:
+          type: object
+          description: Metadados adicionais
+
+    LLMConfig:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [openai, anthropic, local]
+          description: Provedor do LLM
+        model:
+          type: string
+          description: Nome do modelo a ser usado
+        api_key:
+          type: string
+          description: Chave da API (não retornada em GET)
+        base_url:
+          type: string
+          description: URL base da API (para modelos locais)
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 0.7
+          description: Temperatura padrão
+        max_tokens:
+          type: integer
+          minimum: 1
+          maximum: 4000
+          default: 1000
+          description: Máximo de tokens padrão
+        rag_enabled:
+          type: boolean
+          default: true
+          description: Se o RAG está habilitado
+        default_rag_collection:
+          type: string
+          description: Coleção RAG padrão
+        context_window:
+          type: integer
+          default: 8000
+          description: Tamanho da janela de contexto
+        system_prompt:
+          type: string
+          description: Prompt do sistema padrão
+
+    LLMModel:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID do modelo
+        name:
+          type: string
+          description: Nome do modelo
+        provider:
+          type: string
+          description: Provedor do modelo
+        context_length:
+          type: integer
+          description: Tamanho do contexto em tokens
+        max_tokens:
+          type: integer
+          description: Máximo de tokens para resposta
+        pricing:
+          type: object
+          properties:
+            input:
+              type: number
+              description: Preço por token de entrada
+            output:
+              type: number
+              description: Preço por token de saída
+
+    RAGCollection:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Nome da coleção
+        document_count:
+          type: integer
+          description: Número de documentos
+        vector_size:
+          type: integer
+          description: Dimensão dos vetores
+        created_at:
+          type: string
+          format: date-time
+          description: Data de criação
+
+tags:
+  - name: Chat
+    description: Processamento de mensagens via LLM
+  - name: Configuration
+    description: Configurações do serviço LLM
+  - name: RAG
+    description: Integração com sistema RAG
+  - name: Admin
+    description: Endpoints administrativos 

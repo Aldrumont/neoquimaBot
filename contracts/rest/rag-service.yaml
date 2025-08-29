@@ -1,0 +1,348 @@
+openapi: 3.0.3
+info:
+  title: Neoquima RAG Service API
+  description: API para gerenciamento de documentos e busca vetorial para o sistema RAG
+  version: 1.0.0
+  contact:
+    name: Neoquima Team
+    email: dev@neoquima.com
+
+servers:
+  - url: http://localhost:8002
+    description: RAG Service Local
+  - url: http://rag-service:8002
+    description: RAG Service Container
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Verifica o status do serviço RAG
+      responses:
+        '200':
+          description: Serviço funcionando
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  service:
+                    type: string
+                    example: "rag-service"
+                  qdrant_status:
+                    type: string
+                    example: "connected"
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /collections:
+    get:
+      summary: Listar coleções
+      description: Lista todas as coleções de documentos no Qdrant
+      responses:
+        '200':
+          description: Lista de coleções
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collections:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Collection'
+    
+    post:
+      summary: Criar coleção
+      description: Cria uma nova coleção para documentos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCollectionRequest'
+      responses:
+        '201':
+          description: Coleção criada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Collection'
+
+  /collections/{collection_name}:
+    get:
+      summary: Obter coleção
+      description: Obtém informações de uma coleção específica
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Informações da coleção
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Collection'
+    
+    delete:
+      summary: Deletar coleção
+      description: Remove uma coleção e todos os seus documentos
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Coleção removida com sucesso
+
+  /collections/{collection_name}/documents:
+    post:
+      summary: Upload de documento
+      description: Faz upload de um documento, processa e vetoriza
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Arquivo para upload
+                metadata:
+                  type: string
+                  description: Metadados JSON do documento
+                  example: '{"title": "Documento", "author": "Autor", "tags": ["tag1", "tag2"]}'
+      responses:
+        '201':
+          description: Documento processado e vetorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentUploadResponse'
+
+  /collections/{collection_name}/search:
+    post:
+      summary: Busca vetorial
+      description: Realiza busca semântica em uma coleção
+      parameters:
+        - name: collection_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Resultados da busca
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+
+  /admin/config:
+    get:
+      summary: Obter configurações
+      description: Obtém configurações do sistema RAG
+      responses:
+        '200':
+          description: Configurações atuais
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RAGConfig'
+    
+    put:
+      summary: Atualizar configurações
+      description: Atualiza configurações do sistema RAG
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RAGConfig'
+      responses:
+        '200':
+          description: Configurações atualizadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RAGConfig'
+
+components:
+  schemas:
+    Collection:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Nome da coleção
+        vector_size:
+          type: integer
+          description: Dimensão dos vetores
+        distance:
+          type: string
+          description: Métrica de distância (cosine, euclidean, dot)
+        document_count:
+          type: integer
+          description: Número de documentos na coleção
+        created_at:
+          type: string
+          format: date-time
+          description: Data de criação
+        updated_at:
+          type: string
+          format: date-time
+          description: Última atualização
+
+    CreateCollectionRequest:
+      type: object
+      required:
+        - name
+        - vector_size
+      properties:
+        name:
+          type: string
+          description: Nome da coleção
+        vector_size:
+          type: integer
+          description: Dimensão dos vetores (ex: 1536 para OpenAI)
+        distance:
+          type: string
+          enum: [cosine, euclidean, dot]
+          default: cosine
+          description: Métrica de distância
+
+    DocumentUploadResponse:
+      type: object
+      properties:
+        document_id:
+          type: string
+          description: ID único do documento
+        collection_name:
+          type: string
+          description: Nome da coleção
+        status:
+          type: string
+          enum: [processing, completed, failed]
+          description: Status do processamento
+        vector_count:
+          type: integer
+          description: Número de vetores criados
+        metadata:
+          type: object
+          description: Metadados do documento
+        processing_time:
+          type: number
+          description: Tempo de processamento em segundos
+
+    SearchRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: Texto da consulta
+        limit:
+          type: integer
+          default: 10
+          description: Número máximo de resultados
+        score_threshold:
+          type: number
+          default: 0.7
+          description: Threshold mínimo de similaridade
+        filter:
+          type: object
+          description: Filtros para metadados
+
+    SearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        total_found:
+          type: integer
+          description: Total de resultados encontrados
+        search_time:
+          type: number
+          description: Tempo de busca em segundos
+
+    SearchResult:
+      type: object
+      properties:
+        document_id:
+          type: string
+          description: ID do documento
+        score:
+          type: number
+          description: Score de similaridade
+        content:
+          type: string
+          description: Conteúdo relevante do documento
+        metadata:
+          type: object
+          description: Metadados do documento
+
+    RAGConfig:
+      type: object
+      properties:
+        default_vector_size:
+          type: integer
+          default: 1536
+          description: Dimensão padrão dos vetores
+        default_distance:
+          type: string
+          enum: [cosine, euclidean, dot]
+          default: cosine
+          description: Métrica de distância padrão
+        chunk_size:
+          type: integer
+          default: 1000
+          description: Tamanho dos chunks para vetorização
+        chunk_overlap:
+          type: integer
+          default: 200
+          description: Overlap entre chunks
+        supported_formats:
+          type: array
+          items:
+            type: string
+          description: Formatos de arquivo suportados
+        max_file_size:
+          type: integer
+          default: 10485760
+          description: Tamanho máximo de arquivo em bytes
+
+tags:
+  - name: Collections
+    description: Gerenciamento de coleções de documentos
+  - name: Documents
+    description: Upload e processamento de documentos
+  - name: Search
+    description: Busca vetorial semântica
+  - name: Configuration
+    description: Configurações do sistema RAG 
