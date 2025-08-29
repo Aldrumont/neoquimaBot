@@ -7,7 +7,7 @@ from ..models.llm_config import LLMConfig
 from ..schemas.llm_config import LLMConfigCreate, LLMConfigUpdate, LLMConfigResponse
 from ..crud.llm_config import LLMConfigCRUD
 
-router = APIRouter(prefix="/api/v1/llm", tags=["LLM Configuration"])
+router = APIRouter(prefix="/llm", tags=["LLM Configuration"])
 
 @router.get("/config", response_model=LLMConfigResponse)
 async def get_llm_config(db: Session = Depends(get_db)):

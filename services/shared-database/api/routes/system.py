@@ -6,7 +6,7 @@ from ..core.database import get_db
 from ..schemas.system import ApiInfo, HealthCheck, SchemaInfo, SchemaList
 from ..models.user import User
 
-router = APIRouter(prefix="/api/v1", tags=["System"])
+router = APIRouter(prefix="", tags=["System"])
 
 # Variável global para tracking de uptime
 start_time = time.time()

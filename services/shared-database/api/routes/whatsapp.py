@@ -5,7 +5,7 @@ from ..core.database import get_db
 from ..schemas.user import UserCreate, UserUpdate, UserResponse, UserList
 from ..crud.user import UserCRUD
 
-router = APIRouter(prefix="/api/v1/whatsapp", tags=["WhatsApp"])
+router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
 
 @router.get("/users", response_model=UserList)
 async def list_users(

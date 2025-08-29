@@ -8,7 +8,7 @@ class SharedDatabaseService:
     
     def __init__(self):
         self.base_url = os.getenv("SHARED_DATABASE_URL", "http://shared-database-api:8000")
-        self.api_prefix = "/api/v1"
+        self.api_prefix = ""  # Sem prefixo para as APIs de contexto
     
     def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None, params: Optional[Dict] = None) -> Dict[str, Any]:
         """Faz requisição para a API compartilhada"""
@@ -122,7 +122,12 @@ class SharedDatabaseService:
         if "error" in response:
             return None
         
-        sessions = response.get("sessions", [])
+        # A API retorna uma lista diretamente
+        if isinstance(response, list):
+            sessions = response
+        else:
+            sessions = response.get("sessions", [])
+        
         if sessions:
             return sessions[0]  # Retorna a primeira sessão ativa
         return None

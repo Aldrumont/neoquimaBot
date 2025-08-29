@@ -96,11 +96,11 @@ class ConversationHandler:
                     "whatsapp_number": whatsapp_number,
                     "message_length": len(message_text),
                     "response_length": len(response_data["response"]),
-                    "rag_results": len(rag_context["citations"]) if rag_context else 0,
+                    "rag_results": len(rag_context["citations"]) if rag_context and rag_context.get("citations") else 0,
                     "session_turn": session_data["current_turn_count"]
                 },
                 response_data.get("total_tokens", 0),
-                rag_context["average_score"] if rag_context else 0.0,
+                rag_context["average_score"] if rag_context and rag_context.get("average_score") else 0.0,
                 int((datetime.now() - start_time).total_seconds() * 1000)
             )
             
@@ -220,10 +220,20 @@ class ConversationHandler:
             "current_turn_count": 0
         }
         
-        # Criar no banco
-        self.shared_db.create_conversation_session(session_data)
+        # Criar no banco e obter dados retornados
+        created_session = self.shared_db.create_conversation_session(session_data)
         
-        log.info(f"[{correlation_id}] Nova sessão criada: {session_key}")
+        if created_session and "error" not in created_session:
+            # Usar dados retornados pelo banco
+            session_data.update(created_session)
+            log.info(f"[{correlation_id}] Nova sessão criada: {session_key}")
+        else:
+            log.error(f"[{correlation_id}] Erro ao criar sessão no banco: {created_session}")
+            # Criar sessão local se falhar no banco
+            session_data["id"] = None
+            session_data["created_at"] = datetime.now(timezone.utc).isoformat()
+            session_data["last_activity"] = session_data["created_at"]
+        
         return session_data
     
     def _is_session_expired(self, session: Dict) -> bool:

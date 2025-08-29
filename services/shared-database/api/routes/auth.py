@@ -4,7 +4,7 @@ from ..core.database import get_db
 from ..schemas.auth import LoginRequest, LoginResponse
 from ..crud.user import UserCRUD
 
-router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/login", response_model=LoginResponse)
 async def login(
