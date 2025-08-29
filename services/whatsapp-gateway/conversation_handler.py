@@ -1,292 +1,546 @@
-import time
+#!/usr/bin/env python3
+"""
+ConversationHandler - Integra sistema de contexto conversacional com WhatsApp Gateway
+"""
+
+import logging
 import uuid
-from typing import Dict, List, Optional
 import requests
+from datetime import datetime, timezone, timedelta
+from typing import Dict, List, Optional, Tuple
 
-from .database.conversation_manager import ConversationManager
-
+# Configuração de logging
+log = logging.getLogger(__name__)
 
 class ConversationHandler:
-    def __init__(self, db_session):
-        self.conversation_manager = ConversationManager(db_session)
-        self.llm_service_url = "http://llm-service:8003"
-        self.rag_service_url = "http://rag-service:8004"
-        
-        # Comandos de reset
-        self.reset_commands = [
-            "novo assunto", "reset", "limpar", "nova conversa", 
-            "começar de novo", "reiniciar", "zerar"
-        ]
+    """
+    Handler principal para gerenciar conversas do WhatsApp com contexto conversacional
+    """
     
-    def process_whatsapp_message(self, whatsapp_number: str, message: str, 
-                                session_id: str = None) -> Dict:
-        """Processa mensagem do WhatsApp com contexto completo"""
-        start_time = time.time()
+    def __init__(self, shared_db_service, whatsapp_service):
+        self.shared_db = shared_db_service
+        self.whatsapp = whatsapp_service
+        
+        # URLs dos serviços
+        self.llm_url = "http://llm-service:8003/api/chat"
+        self.rag_url = "http://rag-service:8004/api/search"
+        
+        # Configurações padrão
+        self.default_config = {
+            "max_total_tokens": 1500,
+            "summary_tokens": 200,
+            "conversation_window_tokens": 800,
+            "rag_context_tokens": 500,
+            "session_ttl_minutes": 30,
+            "max_conversation_turns": 6
+        }
+    
+    def process_whatsapp_message(
+        self, 
+        whatsapp_number: str, 
+        message_text: str, 
+        user_data: Dict
+    ) -> Dict:
+        """
+        Processa mensagem do WhatsApp com contexto conversacional completo
+        
+        Args:
+            whatsapp_number: Número do WhatsApp (E.164)
+            message_text: Texto da mensagem
+            user_data: Dados do usuário do banco
+            
+        Returns:
+            Dict com resultado do processamento
+        """
+        start_time = datetime.now()
         correlation_id = str(uuid.uuid4())
         
         try:
+            log.info(f"[{correlation_id}] Processando mensagem de {whatsapp_number}")
+            
             # 1. Verificar se é comando de reset
-            if self._is_reset_command(message):
-                self.conversation_manager.handle_reset_command(whatsapp_number, session_id)
-                return {
-                    "response": "✅ Nova conversa iniciada! Como posso ajudar?",
-                    "correlation_id": correlation_id,
-                    "session_reset": True
-                }
+            if self._is_reset_command(message_text):
+                return self._handle_reset_command(whatsapp_number, correlation_id)
             
-            # 2. Obter ou criar sessão
-            session = self.conversation_manager.get_or_create_session(whatsapp_number, session_id)
+            # 2. Obter ou criar sessão de conversa
+            session_data = self._get_or_create_session(whatsapp_number, correlation_id)
+            if not session_data:
+                return self._create_error_response("Erro ao criar sessão", correlation_id)
             
-            # 3. Buscar contexto RAG
-            rag_context = self._search_rag(message)
+            # 3. Buscar contexto RAG se relevante
+            rag_context = None
+            if not self._is_reset_command(message_text):
+                rag_context = self._search_rag(message_text, correlation_id)
             
-            # 4. Obter contexto da conversa
-            conversation_context = self.conversation_manager.get_conversation_context(
-                session.session_key
+            # 4. Gerar resposta contextualizada
+            response_data = self._generate_contextual_response(
+                whatsapp_number, 
+                message_text, 
+                session_data, 
+                rag_context, 
+                correlation_id
             )
             
-            # 5. Gerar resposta com contexto completo
-            response = self._generate_contextual_response(
-                message, rag_context, conversation_context, correlation_id
+            # 5. Enviar resposta via WhatsApp
+            send_result = self.whatsapp.send_text_message(
+                whatsapp_number, 
+                response_data["response"]
             )
             
-            # 6. Salvar turno do usuário
-            user_turn = self.conversation_manager.add_conversation_turn(
-                session.session_key, "user", message, rag_context, correlation_id
-            )
-            
-            # 7. Salvar turno do assistente
-            assistant_turn = self.conversation_manager.add_conversation_turn(
-                session.session_key, "assistant", response["response"], 
-                correlation_id=correlation_id
-            )
-            
-            # 8. Atualizar resumo da sessão
-            self.conversation_manager.update_rolling_summary(
-                session.session_key, user_turn
-            )
-            
-            # 9. Extrair memórias do usuário
-            memories = self.conversation_manager.extract_user_memories(
-                whatsapp_number, user_turn
-            )
-            
-            # 10. Calcular métricas
-            latency_ms = int((time.time() - start_time) * 1000)
-            total_tokens = response.get("tokens_used", 0)
-            rag_score_avg = self._calculate_rag_score_avg(rag_context)
-            
-            # 11. Log de auditoria
-            self.conversation_manager.log_audit(
-                session.session_key,
-                "message_processed",
+            # 6. Log de auditoria
+            self._log_audit(
+                session_data["session_key"],
+                correlation_id,
+                "whatsapp_message_processed",
                 {
-                    "correlation_id": correlation_id,
                     "whatsapp_number": whatsapp_number,
-                    "message_length": len(message),
-                    "response_length": len(response["response"]),
-                    "memories_extracted": len(memories),
-                    "rag_results_count": len(rag_context.get("results", []))
+                    "message_length": len(message_text),
+                    "response_length": len(response_data["response"]),
+                    "rag_results": len(rag_context["citations"]) if rag_context else 0,
+                    "session_turn": session_data["current_turn_count"]
                 },
-                total_tokens,
-                rag_score_avg,
-                latency_ms
+                response_data.get("total_tokens", 0),
+                rag_context["average_score"] if rag_context else 0.0,
+                int((datetime.now() - start_time).total_seconds() * 1000)
             )
             
             return {
-                "response": response["response"],
+                "status": "success",
                 "correlation_id": correlation_id,
-                "session_key": session.session_key,
-                "session_id": session.session_id,
-                "rag_citations": rag_context.get("citations", []),
-                "latency_ms": latency_ms,
-                "tokens_used": total_tokens
+                "session_key": session_data["session_key"],
+                "response": response_data["response"],
+                "rag_context": rag_context,
+                "message_sent": send_result["success"]
             }
             
         except Exception as e:
-            # Log de erro
-            self.conversation_manager.log_audit(
-                session.session_key if 'session' in locals() else "unknown",
-                "error",
-                {
-                    "correlation_id": correlation_id,
-                    "error": str(e),
-                    "whatsapp_number": whatsapp_number
-                }
+            log.error(f"[{correlation_id}] Erro ao processar mensagem: {str(e)}")
+            
+            # Fallback: resposta de erro amigável
+            fallback_response = (
+                f"Olá {user_data.get('name', 'usuário')}! 👋\n\n"
+                f"🔧 Ocorreu um erro ao processar sua mensagem.\n"
+                f"Tente novamente em alguns instantes ou digite 'novo assunto' para recomeçar."
             )
             
+            # Enviar resposta de fallback
+            send_result = self.whatsapp.send_text_message(whatsapp_number, fallback_response)
+            
             return {
-                "response": "❌ Desculpe, ocorreu um erro ao processar sua mensagem. Tente novamente.",
+                "status": "error",
                 "correlation_id": correlation_id,
-                "error": True
+                "error": str(e),
+                "fallback_sent": send_result["success"]
             }
     
-    def _is_reset_command(self, message: str) -> bool:
+    def _is_reset_command(self, message_text: str) -> bool:
         """Verifica se a mensagem é um comando de reset"""
-        message_lower = message.lower().strip()
-        return any(cmd in message_lower for cmd in self.reset_commands)
+        reset_commands = [
+            "novo assunto", "reset", "recomeçar", "nova conversa",
+            "limpar", "limpar conversa", "começar de novo"
+        ]
+        
+        message_lower = message_text.lower().strip()
+        return any(cmd in message_lower for cmd in reset_commands)
     
-    def _search_rag(self, query: str) -> Dict:
-        """Busca no sistema RAG"""
+    def _handle_reset_command(self, whatsapp_number: str, correlation_id: str) -> Dict:
+        """Processa comando de reset de conversa"""
         try:
-            # Buscar em todas as coleções disponíveis
-            collections = ["neoquima", "empresas", "pessoal", "test"]
-            all_results = []
+            log.info(f"[{correlation_id}] Comando de reset detectado para {whatsapp_number}")
             
-            for collection in collections:
-                response = requests.post(
-                    f"{self.rag_service_url}/search",
-                    json={
-                        "query": query,
-                        "collection_name": collection,
-                        "limit": 2,
-                        "threshold": 0.0
-                    },
-                    timeout=10
-                )
-                
-                if response.status_code == 200:
-                    results = response.json()
-                    if results.get("results"):
-                        all_results.extend(results["results"])
+            # Desativar sessão anterior
+            self.shared_db.deactivate_session_by_number(whatsapp_number)
             
-            # Ordenar por score e pegar os melhores
-            all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
-            best_results = all_results[:3]  # Top 3 resultados
+            # Criar nova sessão
+            session_data = self._create_new_session(whatsapp_number, correlation_id)
+            
+            # Resposta de confirmação
+            reset_response = "✅ Nova conversa iniciada! Como posso ajudar?"
+            
+            # Enviar resposta
+            send_result = self.whatsapp.send_text_message(whatsapp_number, reset_response)
+            
+            # Log de auditoria
+            self._log_audit(
+                session_data["session_key"],
+                correlation_id,
+                "conversation_reset",
+                {"whatsapp_number": whatsapp_number, "reset_type": "manual"},
+                0, 0.0, 0
+            )
             
             return {
-                "results": best_results,
-                "citations": [
-                    {
-                        "document_id": r.get("document_id"),
-                        "chunk_id": r.get("chunk_id"),
-                        "score": r.get("score"),
-                        "collection": r.get("metadata", {}).get("filename", "unknown")
-                    }
-                    for r in best_results
-                ],
-                "query": query
+                "status": "reset_success",
+                "correlation_id": correlation_id,
+                "session_key": session_data["session_key"],
+                "response": reset_response,
+                "message_sent": send_result["success"]
             }
             
         except Exception as e:
-            return {"results": [], "citations": [], "query": query, "error": str(e)}
+            log.error(f"[{correlation_id}] Erro no reset: {str(e)}")
+            return self._create_error_response(f"Erro no reset: {str(e)}", correlation_id)
     
-    def _generate_contextual_response(self, message: str, rag_context: Dict, 
-                                    conversation_context: Dict, correlation_id: str) -> Dict:
-        """Gera resposta contextualizada usando LLM"""
+    def _get_or_create_session(self, whatsapp_number: str, correlation_id: str) -> Optional[Dict]:
+        """Obtém ou cria uma sessão de conversa"""
         try:
-            # Montar prompt estruturado
-            prompt = self._build_structured_prompt(message, rag_context, conversation_context)
+            # Buscar sessão ativa
+            session = self.shared_db.get_active_session(whatsapp_number)
             
-            # Chamar LLM Service
-            response = requests.post(
-                f"{self.llm_service_url}/api/chat",
-                json={
-                    "message": prompt,
-                    "correlation_id": correlation_id,
-                    "context": {
-                        "rag_results": rag_context.get("results", []),
-                        "conversation_history": conversation_context.get("recent_turns", []),
-                        "rolling_summary": conversation_context.get("rolling_summary", "")
+            if session:
+                # Verificar se não expirou
+                if self._is_session_expired(session):
+                    log.info(f"[{correlation_id}] Sessão expirada, criando nova")
+                    self.shared_db.deactivate_session(session["session_key"])
+                    session = None
+                else:
+                    # Atualizar última atividade
+                    self.shared_db.update_session_activity(session["session_key"])
+            
+            if not session:
+                # Criar nova sessão
+                session = self._create_new_session(whatsapp_number, correlation_id)
+            
+            return session
+            
+        except Exception as e:
+            log.error(f"[{correlation_id}] Erro ao obter/criar sessão: {str(e)}")
+            return None
+    
+    def _create_new_session(self, whatsapp_number: str, correlation_id: str) -> Dict:
+        """Cria uma nova sessão de conversa"""
+        session_id = str(uuid.uuid4())
+        session_key = f"{whatsapp_number}:{session_id}"
+        
+        session_data = {
+            "session_key": session_key,
+            "whatsapp_number": whatsapp_number,
+            "session_id": session_id,
+            "config_id": 1,  # Configuração padrão
+            "current_turn_count": 0
+        }
+        
+        # Criar no banco
+        self.shared_db.create_conversation_session(session_data)
+        
+        log.info(f"[{correlation_id}] Nova sessão criada: {session_key}")
+        return session_data
+    
+    def _is_session_expired(self, session: Dict) -> bool:
+        """Verifica se a sessão expirou"""
+        if not session.get("last_activity"):
+            return False
+        
+        try:
+            last_activity = datetime.fromisoformat(
+                session["last_activity"].replace('Z', '+00:00')
+            )
+            ttl_minutes = self.default_config["session_ttl_minutes"]
+            expiry_time = last_activity + timedelta(minutes=ttl_minutes)
+            
+            return datetime.now(timezone.utc) > expiry_time
+            
+        except Exception:
+            return False
+    
+    def _search_rag(self, query: str, correlation_id: str) -> Optional[Dict]:
+        """Busca contexto RAG para a mensagem"""
+        try:
+            log.info(f"[{correlation_id}] Buscando RAG para: {query[:50]}...")
+            
+            # Fazer busca no RAG Service
+            rag_payload = {
+                "query": query,
+                "collection": "neoquima",  # Coleção padrão
+                "limit": 3
+            }
+            
+            rag_response = requests.post(
+                self.rag_url, 
+                json=rag_payload, 
+                timeout=10
+            )
+            
+            if rag_response.status_code == 200:
+                rag_data = rag_response.json()
+                
+                if rag_data.get("results") and len(rag_data["results"]) > 0:
+                    citations = []
+                    total_score = 0.0
+                    
+                    for result in rag_data["results"]:
+                        citation = {
+                            "document_id": result.get("document_id", "unknown"),
+                            "chunk_id": result.get("chunk_id", "unknown"),
+                            "score": result.get("score", 0.0),
+                            "content": result.get("content", "")[:200] + "..."
+                        }
+                        citations.append(citation)
+                        total_score += citation["score"]
+                    
+                    average_score = total_score / len(citations) if citations else 0.0
+                    
+                    log.info(f"[{correlation_id}] RAG: {len(citations)} resultados, score médio: {average_score:.2f}")
+                    
+                    return {
+                        "citations": citations,
+                        "average_score": average_score,
+                        "collection": "neoquima",
+                        "query": query
                     }
-                },
+            
+            log.info(f"[{correlation_id}] RAG: Nenhum resultado relevante")
+            return None
+            
+        except Exception as e:
+            log.warning(f"[{correlation_id}] Erro na busca RAG: {str(e)}")
+            return None
+    
+    def _generate_contextual_response(
+        self, 
+        whatsapp_number: str, 
+        message_text: str, 
+        session_data: Dict, 
+        rag_context: Optional[Dict], 
+        correlation_id: str
+    ) -> Dict:
+        """Gera resposta contextualizada usando LLM + contexto"""
+        try:
+            # Construir prompt estruturado
+            prompt = self._build_structured_prompt(
+                message_text, 
+                session_data, 
+                rag_context
+            )
+            
+            # Fazer request para LLM Service
+            llm_payload = {
+                "message": prompt,
+                "user_id": str(whatsapp_number),
+                "user_name": "usuário WhatsApp",
+                "correlation_id": correlation_id
+            }
+            
+            log.info(f"[{correlation_id}] Enviando para LLM: {len(prompt)} chars")
+            
+            llm_response = requests.post(
+                self.llm_url, 
+                json=llm_payload, 
                 timeout=30
             )
             
-            if response.status_code == 200:
-                result = response.json()
+            if llm_response.status_code == 200:
+                llm_data = llm_response.json()
+                ai_response = llm_data.get("response", "Desculpe, não consegui processar sua mensagem.")
+                total_tokens = llm_data.get("total_tokens", 0)
+                
+                log.info(f"[{correlation_id}] Resposta LLM: {len(ai_response)} chars, {total_tokens} tokens")
+                
+                # Salvar turno da conversa
+                self._save_conversation_turn(
+                    session_data["session_key"],
+                    session_data["current_turn_count"] + 1,
+                    "user",
+                    message_text,
+                    correlation_id,
+                    rag_context
+                )
+                
+                self._save_conversation_turn(
+                    session_data["session_key"],
+                    session_data["current_turn_count"] + 2,
+                    "assistant",
+                    ai_response,
+                    correlation_id
+                )
+                
+                # Atualizar sessão
+                self.shared_db.update_session_turn_count(
+                    session_data["session_key"],
+                    session_data["current_turn_count"] + 2
+                )
+                
+                # Extrair memórias do usuário
+                self._extract_user_memories(whatsapp_number, message_text, ai_response, correlation_id)
+                
                 return {
-                    "response": result.get("response", "Desculpe, não consegui gerar uma resposta."),
-                    "tokens_used": result.get("tokens_used", 0)
+                    "response": ai_response,
+                    "total_tokens": total_tokens,
+                    "rag_context": rag_context
                 }
+            
             else:
-                return {
-                    "response": "Desculpe, ocorreu um erro ao gerar a resposta.",
-                    "tokens_used": 0
-                }
+                log.error(f"[{correlation_id}] Erro LLM: {llm_response.status_code}")
+                return self._create_fallback_response(message_text)
                 
         except Exception as e:
-            return {
-                "response": f"Desculpe, ocorreu um erro: {str(e)}",
-                "tokens_used": 0
-            }
+            log.error(f"[{correlation_id}] Erro ao gerar resposta: {str(e)}")
+            return self._create_fallback_response(message_text)
     
-    def _build_structured_prompt(self, message: str, rag_context: Dict, 
-                                conversation_context: Dict) -> str:
+    def _build_structured_prompt(
+        self, 
+        message_text: str, 
+        session_data: Dict, 
+        rag_context: Optional[Dict]
+    ) -> str:
         """Constrói prompt estruturado para o LLM"""
+        prompt_parts = []
         
-        # System prompt
-        system_prompt = """Você é um assistente inteligente da Neoquima. 
-        Responda de forma clara, profissional e baseada no contexto fornecido.
-        Se não souber algo, seja honesto sobre isso."""
+        # Contexto da sessão
+        if session_data.get("rolling_summary"):
+            prompt_parts.append(f"📝 RESUMO DA CONVERSA:\n{session_data['rolling_summary']}\n")
         
         # Contexto RAG
-        rag_info = ""
-        if rag_context.get("results"):
-            rag_info = "\n\nINFORMAÇÕES RELEVANTES DOS DOCUMENTOS:\n"
-            for i, result in enumerate(rag_context["results"], 1):
-                rag_info += f"{i}. {result.get('content', '')[:200]}...\n"
+        if rag_context and rag_context.get("citations"):
+            prompt_parts.append("📚 INFORMAÇÕES RELEVANTES:\n")
+            for i, citation in enumerate(rag_context["citations"], 1):
+                prompt_parts.append(f"{i}. {citation['content']}")
+            prompt_parts.append("")
         
-        # Histórico da conversa
-        conversation_history = ""
-        if conversation_context.get("recent_turns"):
-            conversation_history = "\n\nHISTÓRICO RECENTE DA CONVERSA:\n"
-            for turn in conversation_context["recent_turns"][-4:]:  # Últimos 4 turnos
-                role = "Usuário" if turn["role"] == "user" else "Assistente"
-                conversation_history += f"{role}: {turn['content']}\n"
+        # Instruções para o LLM
+        prompt_parts.append(
+            "🤖 INSTRUÇÕES:\n"
+            "Você é um assistente virtual da Neoquima, empresa especializada em tratamento de água.\n"
+            "Responda de forma clara, profissional e útil.\n"
+            "Se houver informações relevantes acima, use-as para enriquecer sua resposta.\n"
+            "Seja conciso mas completo.\n\n"
+            "💬 PERGUNTA DO USUÁRIO:\n"
+        )
         
-        # Resumo da sessão
-        session_summary = ""
-        if conversation_context.get("rolling_summary"):
-            session_summary = f"\n\nRESUMO DA SESSÃO:\n{conversation_context['rolling_summary']}"
+        prompt_parts.append(message_text)
         
-        # Instruções
-        instructions = f"""
-        
-        INSTRUÇÕES:
-        - Use as informações dos documentos quando relevante
-        - Mantenha o contexto da conversa
-        - Seja conciso mas completo
-        - Cite as fontes quando usar informações dos documentos
-        
-        PERGUNTA ATUAL: {message}
-        
-        Responda de forma natural e contextualizada."""
-        
-        # Montar prompt completo
-        full_prompt = f"{system_prompt}{rag_info}{conversation_history}{session_summary}{instructions}"
-        
-        return full_prompt
+        return "\n".join(prompt_parts)
     
-    def _calculate_rag_score_avg(self, rag_context: Dict) -> float:
-        """Calcula score médio dos resultados RAG"""
-        results = rag_context.get("results", [])
-        if not results:
-            return 0.0
-        
-        scores = [r.get("score", 0) for r in results]
-        return sum(scores) / len(scores) if scores else 0.0
-    
-    def get_conversation_stats(self, whatsapp_number: str) -> Dict:
-        """Obtém estatísticas da conversa do usuário"""
+    def _save_conversation_turn(
+        self, 
+        session_key: str, 
+        turn_number: int, 
+        role: str, 
+        content: str, 
+        correlation_id: str, 
+        rag_context: Optional[Dict] = None
+    ):
+        """Salva um turno da conversa no banco"""
         try:
-            # Buscar sessão ativa
-            session = self.conversation_manager.get_or_create_session(whatsapp_number)
-            
-            # Buscar memórias
-            memories = self.conversation_manager.get_user_memories(whatsapp_number)
-            
-            # Buscar contexto
-            context = self.conversation_manager.get_conversation_context(session.session_key)
-            
-            return {
-                "session_active": session.is_active,
-                "turn_count": session.current_turn_count,
-                "total_tokens": session.total_tokens_used,
-                "memories_count": len(memories),
-                "recent_turns": len(context.get("recent_turns", [])),
-                "rolling_summary_length": len(context.get("rolling_summary", ""))
+            turn_data = {
+                "session_key": session_key,
+                "turn_number": turn_number,
+                "role": role,
+                "content": content,
+                "correlation_id": correlation_id,
+                "tokens_used": len(content.split())  # Estimativa simples
             }
             
+            if rag_context:
+                turn_data.update({
+                    "rag_citations": rag_context.get("citations", []),
+                    "rag_collection": rag_context.get("collection"),
+                    "rag_query": rag_context.get("query")
+                })
+            
+            self.shared_db.create_conversation_turn(turn_data)
+            
         except Exception as e:
-            return {"error": str(e)} 
+            log.error(f"[{correlation_id}] Erro ao salvar turno: {str(e)}")
+    
+    def _extract_user_memories(
+        self, 
+        whatsapp_number: str, 
+        user_message: str, 
+        ai_response: str, 
+        correlation_id: str
+    ):
+        """Extrai e salva memórias do usuário"""
+        try:
+            # Memórias simples baseadas em palavras-chave
+            memories = []
+            
+            # Empresa
+            if any(word in user_message.lower() for word in ["empresa", "trabalho", "companhia"]):
+                memories.append({
+                    "type": "empresa",
+                    "value": "Usuário mencionou empresa/trabalho",
+                    "confidence": 0.8
+                })
+            
+            # Produtos
+            if any(word in user_message.lower() for word in ["produto", "nq-", "químico", "tratamento"]):
+                memories.append({
+                    "type": "produto",
+                    "value": "Usuário interessado em produtos químicos",
+                    "confidence": 0.9
+                })
+            
+            # Localização
+            if any(word in user_message.lower() for word in ["cidade", "estado", "região", "local"]):
+                memories.append({
+                    "type": "localizacao",
+                    "value": "Usuário mencionou localização",
+                    "confidence": 0.7
+                })
+            
+            # Salvar memórias
+            for memory in memories:
+                self.shared_db.create_user_memory(
+                    whatsapp_number,
+                    memory["type"],
+                    memory["value"],
+                    memory["confidence"]
+                )
+                
+            if memories:
+                log.info(f"[{correlation_id}] Memórias extraídas: {len(memories)}")
+                
+        except Exception as e:
+            log.warning(f"[{correlation_id}] Erro ao extrair memórias: {str(e)}")
+    
+    def _log_audit(
+        self, 
+        session_key: str, 
+        correlation_id: str, 
+        action: str, 
+        details: Dict, 
+        total_tokens: int, 
+        rag_score_average: float, 
+        latency_ms: int
+    ):
+        """Registra log de auditoria"""
+        try:
+            audit_data = {
+                "session_key": session_key,
+                "correlation_id": correlation_id,
+                "action": action,
+                "details": details,
+                "total_tokens": total_tokens,
+                "rag_score_average": rag_score_average,
+                "latency_ms": latency_ms
+            }
+            
+            self.shared_db.create_audit_log(audit_data)
+            
+        except Exception as e:
+            log.error(f"[{correlation_id}] Erro ao logar auditoria: {str(e)}")
+    
+    def _create_error_response(self, error_message: str, correlation_id: str) -> Dict:
+        """Cria resposta de erro padronizada"""
+        return {
+            "status": "error",
+            "correlation_id": correlation_id,
+            "error": error_message,
+            "response": "Desculpe, ocorreu um erro. Tente novamente."
+        }
+    
+    def _create_fallback_response(self, original_message: str) -> Dict:
+        """Cria resposta de fallback quando LLM falha"""
+        fallback_text = (
+            "Olá! 👋\n\n"
+            f"Recebi sua mensagem: \"{original_message}\"\n\n"
+            "🔧 O módulo de IA está temporariamente indisponível.\n"
+            "Tente novamente em alguns instantes ou digite 'novo assunto' para recomeçar."
+        )
+        
+        return {
+            "response": fallback_text,
+            "total_tokens": len(fallback_text.split()),
+            "rag_context": None
+        } 

@@ -110,4 +110,108 @@ class SharedDatabaseService:
         if "error" in response:
             return {"users": [], "total": 0}
         
-        return response 
+        return response
+
+    # ========= MÉTODOS PARA SISTEMA DE CONTEXTO CONVERSACIONAL =========
+    
+    def get_active_session(self, whatsapp_number: str) -> Optional[Dict[str, Any]]:
+        """Busca sessão ativa para um número de WhatsApp"""
+        params = {"whatsapp_number": whatsapp_number, "active": True}
+        response = self._make_request("GET", "/conversations/sessions", params=params)
+        
+        if "error" in response:
+            return None
+        
+        sessions = response.get("sessions", [])
+        if sessions:
+            return sessions[0]  # Retorna a primeira sessão ativa
+        return None
+    
+    def create_conversation_session(self, session_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Cria uma nova sessão de conversa"""
+        response = self._make_request("POST", "/conversations/sessions", data=session_data)
+        
+        if "error" in response:
+            return None
+        
+        return response
+    
+    def deactivate_session(self, session_key: str) -> bool:
+        """Desativa uma sessão de conversa"""
+        data = {"is_active": False}
+        response = self._make_request("PUT", f"/conversations/sessions/{session_key}", data=data)
+        
+        return "error" not in response
+    
+    def deactivate_session_by_number(self, whatsapp_number: str) -> bool:
+        """Desativa todas as sessões ativas de um número"""
+        # Primeiro buscar sessões ativas
+        session = self.get_active_session(whatsapp_number)
+        if session:
+            return self.deactivate_session(session["session_key"])
+        return True
+    
+    def update_session_activity(self, session_key: str) -> bool:
+        """Atualiza a última atividade de uma sessão"""
+        data = {"last_activity": datetime.now(timezone.utc).isoformat()}
+        response = self._make_request("PUT", f"/conversations/sessions/{session_key}", data=data)
+        
+        return "error" not in response
+    
+    def update_session_turn_count(self, session_key: str, turn_count: int) -> bool:
+        """Atualiza o contador de turnos de uma sessão"""
+        data = {"current_turn_count": turn_count}
+        response = self._make_request("PUT", f"/conversations/sessions/{session_key}", data=data)
+        
+        return "error" not in response
+    
+    def create_conversation_turn(self, turn_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Salva um turno da conversa no banco"""
+        response = self._make_request("POST", "/conversations/turns", data=turn_data)
+        
+        if "error" in response:
+            return None
+        
+        return response
+    
+    def create_user_memory(self, whatsapp_number: str, memory_type: str, memory_value: str, confidence: float) -> Optional[Dict[str, Any]]:
+        """Cria uma nova memória do usuário"""
+        memory_data = {
+            "whatsapp_number": whatsapp_number,
+            "memory_type": memory_type,
+            "memory_value": memory_value,
+            "confidence": confidence,
+            "opt_in_status": True  # Assumir que usuário deu opt-in
+        }
+        
+        response = self._make_request("POST", "/conversations/memories", data=memory_data)
+        
+        if "error" in response:
+            return None
+        
+        return response
+    
+    def create_audit_log(self, audit_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Registra log de auditoria"""
+        response = self._make_request("POST", "/conversations/audit", data=audit_data)
+        
+        if "error" not in response:
+            return None
+        
+        return response
+    
+    def get_conversation_context(self, session_key: str) -> Optional[Dict[str, Any]]:
+        """Obtém o contexto completo de uma conversa"""
+        response = self._make_request("GET", f"/conversations/sessions/{session_key}/context")
+        
+        if "error" in response:
+            return None
+        
+        return response
+    
+    def update_rolling_summary(self, session_key: str, summary: str) -> bool:
+        """Atualiza o resumo acumulado de uma sessão"""
+        data = {"rolling_summary": summary}
+        response = self._make_request("PUT", f"/conversations/sessions/{session_key}", data=data)
+        
+        return "error" not in response 

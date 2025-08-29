@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.params import Query, Header
 from fastapi.responses import PlainTextResponse, JSONResponse
 from pydantic import BaseModel
-import os, re, logging
+import os, re, logging, requests
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -17,6 +17,9 @@ from shared_database_service import SharedDatabaseService
 
 # Importação do serviço WhatsApp
 from whatsapp_service import whatsapp_service
+
+# Importação do ConversationHandler
+from conversation_handler import ConversationHandler
 
 # ========= Config =========
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "changeme")      # usado no GET /webhook (handshake)
@@ -44,6 +47,9 @@ log = logging.getLogger("uvicorn.error")
 
 # Instância do serviço compartilhado
 shared_db = SharedDatabaseService()
+
+# Instância do ConversationHandler
+conversation_handler = ConversationHandler(shared_db, whatsapp_service)
 
 # Criar tabelas na inicialização (mantido para compatibilidade)
 @app.on_event("startup")
@@ -159,63 +165,64 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
             }
         }
     
-    # >>> AQUI entraria o repasse para o Chat Orchestrator/LLM <<<
-    # Por enquanto, apenas log
-    log.info("autorizado %s -> encaminhar ao LLM: '%s'", sender, message_text)
+    # >>> PROCESSAMENTO COM SISTEMA DE CONTEXTO CONVERSACIONAL <<<
+    log.info("autorizado %s -> processando com contexto: '%s'", sender, message_text)
     
-    # Integrar com módulo LLM
+    # Usar ConversationHandler para processar a mensagem
     try:
-        import requests
+        result = conversation_handler.process_whatsapp_message(
+            whatsapp_number=sender,
+            message_text=message_text,
+            user_data=db_user
+        )
         
-        # Fazer request para o LLM Service
-        llm_url = "http://llm-service:8003/api/chat"
-        llm_payload = {
-            "message": message_text,
-            "user_id": str(db_user.get("id")),
-            "user_name": db_user.get("name", "usuário")
-        }
-        
-        log.info("enviando para LLM: %s", llm_payload)
-        
-        llm_response = requests.post(llm_url, json=llm_payload, timeout=30)
-        
-        if llm_response.status_code == 200:
-            llm_data = llm_response.json()
-            ai_response = llm_data.get("response", "Desculpe, não consegui processar sua mensagem.")
-            
-            log.info("resposta do LLM recebida: %s", ai_response[:100] + "..." if len(ai_response) > 100 else ai_response)
-            
-            # Enviar resposta do LLM via WhatsApp
-            send_result = whatsapp_service.send_text_message(sender, ai_response)
-            
+        if result["status"] == "success":
+            log.info("mensagem processada com sucesso: %s", result["correlation_id"])
+            return {
+                "status": "accepted",
+                "user_id": db_user["id"],
+                "correlation_id": result["correlation_id"],
+                "session_key": result["session_key"],
+                "message_sent": result["message_sent"],
+                "rag_context": result.get("rag_context")
+            }
+        elif result["status"] == "reset_success":
+            log.info("conversa resetada com sucesso: %s", result["correlation_id"])
+            return {
+                "status": "reset_success",
+                "user_id": db_user["id"],
+                "correlation_id": result["correlation_id"],
+                "session_key": result["session_key"],
+                "message_sent": result["message_sent"]
+            }
         else:
-            log.error("erro no LLM Service: %s", llm_response.status_code)
-            # Fallback para resposta temporária
-            temp_response = (
-                f"Olá {db_user.get('name', 'usuário')}! 👋\n\n"
-                f"Recebi sua mensagem: \"{message_text}\"\n\n"
-                f"🔧 O módulo de IA está temporariamente indisponível.\n"
-                f"Tente novamente em alguns instantes!"
-            )
-            send_result = whatsapp_service.send_text_message(sender, temp_response)
+            log.error("erro no processamento: %s", result.get("error", "unknown"))
+            return {
+                "status": "error",
+                "user_id": db_user["id"],
+                "correlation_id": result.get("correlation_id"),
+                "error": result.get("error"),
+                "message_sent": result.get("fallback_sent", False)
+            }
             
     except Exception as e:
-        log.error("erro ao integrar com LLM: %s", str(e))
+        log.error("erro ao processar mensagem com ConversationHandler: %s", str(e))
+        
         # Fallback para resposta temporária
         temp_response = (
             f"Olá {db_user.get('name', 'usuário')}! 👋\n\n"
             f"Recebi sua mensagem: \"{message_text}\"\n\n"
-            f"🔧 Ocorreu um erro ao processar sua mensagem.\n"
-            f"Tente novamente em alguns instantes!"
+            f"🔧 O sistema de contexto está temporariamente indisponível.\n"
+            f"Tente novamente em alguns instantes ou digite 'novo assunto' para recomeçar!"
         )
         send_result = whatsapp_service.send_text_message(sender, temp_response)
-
-    # Retorno da função webhook
-    return {
-        "status": "accepted", 
-        "user_id": db_user["id"],
-        "message_sent": send_result["success"]
-    }
+        
+        return {
+            "status": "fallback",
+            "user_id": db_user["id"],
+            "error": str(e),
+            "message_sent": send_result["success"]
+        }
 
 # ========= Admin (API key simples) =========
 def check_admin(token: str = None):
