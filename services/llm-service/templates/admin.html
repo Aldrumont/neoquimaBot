@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Neoquima LLM</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center">
+                    <i class="fas fa-cog text-2xl text-blue-600 mr-3"></i>
+                    <h1 class="text-2xl font-bold text-gray-900">Admin LLM</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="/" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">
+                        <i class="fas fa-arrow-left mr-2"></i>Voltar ao Chat
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Configurações LLM -->
+            <div class="bg-white rounded-lg shadow-sm border p-6">
+                <h2 class="text-xl font-semibold text-gray-900 mb-4">
+                    <i class="fas fa-robot mr-2 text-blue-600"></i>
+                    Configurações do LLM
+                </h2>
+                
+                <form id="llm-config-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Provedor
+                        </label>
+                        <select id="provider" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="ollama">Ollama (Local)</option>
+                            <option value="openai">OpenAI</option>
+                            <option value="anthropic">Anthropic</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Modelo
+                        </label>
+                        <select id="model" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="llama2:3b">llama2:3b (Recomendado para CPU)</option>
+                            <option value="llama2:7b">llama2:7b</option>
+                            <option value="mistral:7b">mistral:7b</option>
+                            <option value="phi:2.7b">phi:2.7b (Muito leve)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Temperatura
+                        </label>
+                        <div class="flex items-center space-x-2">
+                            <input type="range" id="temperature" min="0" max="200" value="70" class="flex-1">
+                            <span id="temperature-value" class="text-sm text-gray-600 w-16">0.70</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">
+                            Baixa = mais determinístico, Alta = mais criativo
+                        </p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Máximo de Tokens
+                        </label>
+                        <input type="number" id="max-tokens" min="100" max="4000" value="1000" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">
+                            Limite de tokens na resposta (100-4000)
+                        </p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Janela de Contexto
+                        </label>
+                        <input type="number" id="context-window" min="1024" max="8192" value="4096" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">
+                            Tamanho da memória de contexto
+                        </p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Prompt do Sistema
+                        </label>
+                        <textarea id="system-prompt" rows="4" 
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                  placeholder="Instruções para o comportamento do LLM...">Você é um assistente útil e amigável. Responda de forma clara e concisa.</textarea>
+                    </div>
+
+                    <div class="flex space-x-4">
+                        <button type="submit" class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                            <i class="fas fa-save mr-2"></i>Salvar Configuração
+                        </button>
+                        <button type="button" id="load-config" class="flex-1 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">
+                            <i class="fas fa-download mr-2"></i>Carregar
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Status e Modelos -->
+            <div class="space-y-6">
+                <!-- Status do Sistema -->
+                <div class="bg-white rounded-lg shadow-sm border p-6">
+                    <h2 class="text-xl font-semibold text-gray-900 mb-4">
+                        <i class="fas fa-heartbeat mr-2 text-green-600"></i>
+                        Status do Sistema
+                    </h2>
+                    
+                    <div id="system-status" class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-600">LLM Service:</span>
+                            <span id="llm-status" class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">
+                                Verificando...
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-600">Ollama:</span>
+                            <span id="ollama-status" class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">
+                                Verificando...
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-600">Shared Database:</span>
+                            <span id="db-status" class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">
+                                Verificando...
+                            </span>
+                        </div>
+                    </div>
+
+                    <button id="refresh-status" class="mt-4 w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
+                        <i class="fas fa-sync-alt mr-2"></i>Atualizar Status
+                    </button>
+                </div>
+
+                <!-- Modelos Disponíveis -->
+                <div class="bg-white rounded-lg shadow-sm border p-6">
+                    <h2 class="text-xl font-semibold text-gray-900 mb-4">
+                        <i class="fas fa-list mr-2 text-blue-600"></i>
+                        Modelos Disponíveis
+                    </h2>
+                    
+                    <div id="models-list" class="space-y-2">
+                        <div class="text-center text-gray-500 py-4">
+                            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                            <p>Carregando modelos...</p>
+                        </div>
+                    </div>
+
+                    <button id="refresh-models" class="mt-4 w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-sync-alt mr-2"></i>Atualizar Modelos
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notificações -->
+        <div id="notifications" class="fixed top-4 right-4 space-y-2 z-50"></div>
+    </main>
+
+    <script>
+        class AdminApp {
+            constructor() {
+                this.init();
+            }
+
+            async init() {
+                this.bindEvents();
+                await this.loadConfig();
+                await this.checkSystemStatus();
+                await this.loadModels();
+            }
+
+            bindEvents() {
+                const form = document.getElementById('llm-config-form');
+                const loadBtn = document.getElementById('load-config');
+                const refreshStatusBtn = document.getElementById('refresh-status');
+                const refreshModelsBtn = document.getElementById('refresh-models');
+                const temperatureSlider = document.getElementById('temperature');
+
+                form.addEventListener('submit', (e) => this.handleSubmit(e));
+                loadBtn.addEventListener('click', () => this.loadConfig());
+                refreshStatusBtn.addEventListener('click', () => this.checkSystemStatus());
+                refreshModelsBtn.addEventListener('click', () => this.loadModels());
+                temperatureSlider.addEventListener('input', (e) => this.updateTemperatureValue(e));
+
+                // Atualizar valor da temperatura
+                this.updateTemperatureValue({ target: { value: temperatureSlider.value } });
+            }
+
+            updateTemperatureValue(e) {
+                const value = e.target.value;
+                const displayValue = (value / 100).toFixed(2);
+                document.getElementById('temperature-value').textContent = displayValue;
+            }
+
+            async handleSubmit(e) {
+                e.preventDefault();
+                
+                const formData = {
+                    provider: document.getElementById('provider').value,
+                    model: document.getElementById('model').value,
+                    temperature: parseFloat(document.getElementById('temperature').value) / 100,
+                    max_tokens: parseInt(document.getElementById('max-tokens').value),
+                    context_window: parseInt(document.getElementById('context-window').value),
+                    system_prompt: document.getElementById('system-prompt').value
+                };
+
+                try {
+                    // Salvar no shared-database
+                    const response = await fetch('/api/config', {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(formData)
+                    });
+
+                    if (response.ok) {
+                        this.showNotification('Configuração salva com sucesso!', 'success');
+                        // Recarregar configuração
+                        await this.loadConfig();
+                    } else {
+                        const error = await response.json();
+                        throw new Error(error.detail || 'Erro ao salvar');
+                    }
+                } catch (error) {
+                    console.error('Erro ao salvar:', error);
+                    this.showNotification(`Erro ao salvar: ${error.message}`, 'error');
+                }
+            }
+
+            async loadConfig() {
+                try {
+                    const response = await fetch('/api/config');
+                    if (response.ok) {
+                        const config = await response.json();
+                        this.populateForm(config);
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar config:', error);
+                }
+            }
+
+            populateForm(config) {
+                if (config.provider) document.getElementById('provider').value = config.provider;
+                if (config.model) document.getElementById('model').value = config.model;
+                if (config.temperature) {
+                    const tempValue = Math.round(config.temperature * 100);
+                    document.getElementById('temperature').value = tempValue;
+                    this.updateTemperatureValue({ target: { value: tempValue } });
+                }
+                if (config.max_tokens) document.getElementById('max-tokens').value = config.max_tokens;
+                if (config.context_window) document.getElementById('context-window').value = config.context_window;
+                if (config.system_prompt) document.getElementById('system-prompt').value = config.system_prompt;
+            }
+
+            async checkSystemStatus() {
+                try {
+                    const response = await fetch('/health');
+                    if (response.ok) {
+                        const status = await response.json();
+                        this.updateStatusDisplay(status);
+                    }
+                } catch (error) {
+                    console.error('Erro ao verificar status:', error);
+                    this.updateStatusDisplay({ status: 'unhealthy' });
+                }
+            }
+
+            updateStatusDisplay(status) {
+                const updateStatus = (id, status, text) => {
+                    const element = document.getElementById(id);
+                    element.textContent = text;
+                    element.className = `px-2 py-1 text-xs rounded-full ${status === 'healthy' || status === 'connected' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`;
+                };
+
+                updateStatus('llm-status', status.status, status.status === 'healthy' ? 'Online' : 'Offline');
+                updateStatus('ollama-status', status.ollama_status, status.ollama_status === 'connected' ? 'Conectado' : 'Desconectado');
+                updateStatus('db-status', status.shared_db_status, status.shared_db_status === 'connected' ? 'Conectado' : 'Desconectado');
+            }
+
+            async loadModels() {
+                try {
+                    const response = await fetch('/api/models');
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.displayModels(data.models || []);
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar modelos:', error);
+                    this.displayModels([]);
+                }
+            }
+
+            displayModels(models) {
+                const container = document.getElementById('models-list');
+                
+                if (models.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center text-gray-500 py-4">
+                            <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                            <p>Nenhum modelo encontrado</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = models.map(model => `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div>
+                            <div class="font-medium text-gray-900">${model.name}</div>
+                            <div class="text-sm text-gray-500">
+                                Tamanho: ${this.formatBytes(model.size || 0)}
+                            </div>
+                        </div>
+                        <div class="text-xs text-gray-400">
+                            ${model.modified_at ? new Date(model.modified_at).toLocaleDateString() : 'N/A'}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            formatBytes(bytes) {
+                if (bytes === 0) return '0 B';
+                const k = 1024;
+                const sizes = ['B', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+
+            showNotification(message, type = 'info') {
+                const notification = document.createElement('div');
+                notification.className = `px-4 py-3 rounded-lg shadow-lg text-white ${
+                    type === 'success' ? 'bg-green-600' : 
+                    type === 'error' ? 'bg-red-600' : 'bg-blue-600'
+                }`;
+                notification.innerHTML = `
+                    <div class="flex items-center">
+                        <i class="fas fa-${type === 'success' ? 'check' : type === 'error' ? 'exclamation-triangle' : 'info-circle'} mr-2"></i>
+                        <span>${message}</span>
+                    </div>
+                `;
+
+                const container = document.getElementById('notifications');
+                container.appendChild(notification);
+
+                setTimeout(() => {
+                    notification.remove();
+                }, 5000);
+            }
+        }
+
+        // Inicializar app quando a página carregar
+        document.addEventListener('DOMContentLoaded', () => {
+            new AdminApp();
+        });
+    </script>
+</body>
+</html> 

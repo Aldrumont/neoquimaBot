@@ -54,7 +54,45 @@ services:
       - QDRANT__SERVICE__HTTP_PORT=6333
       - QDRANT__SERVICE__GRPC_PORT=6334
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:6333/collections"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - shared-network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: neoquima-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 5
+    #   start_period: 60s
+    networks:
+      - shared-network
+
+  llm-service:
+    build: ../services/llm-service
+    container_name: neoquima-llm-service
+    ports:
+      - "8003:8003"
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - SHARED_DATABASE_URL=http://shared-database-api:8000
+      - DEFAULT_MODEL=llama2:3b
+    depends_on:
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -109,6 +147,7 @@ services:
 volumes:
   shared_postgres_data:
   qdrant_data:
+  ollama_data:
 
 networks:
   shared-network:

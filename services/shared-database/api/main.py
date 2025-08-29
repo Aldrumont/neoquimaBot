@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
-from .routes import system_router, whatsapp_router, auth_router
+from .routes import system_router, whatsapp_router, auth_router, llm_router
 from .core.database import init_db
 
 # Configurações
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(system_router)
 app.include_router(whatsapp_router)
 app.include_router(auth_router)
+app.include_router(llm_router)
 
 @app.on_event("startup")
 async def startup_event():

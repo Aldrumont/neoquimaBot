@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neoquima LLM Chat</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .chat-container {
+            height: calc(100vh - 200px);
+        }
+        .message {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .typing-indicator {
+            display: none;
+        }
+        .typing-indicator.show {
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center">
+                    <i class="fas fa-robot text-2xl text-blue-600 mr-3"></i>
+                    <h1 class="text-2xl font-bold text-gray-900">Neoquima LLM Chat</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-500" id="model-info">Modelo: Carregando...</span>
+                    <a href="/admin" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-cog mr-2"></i>Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Chat Area -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <!-- Chat Messages -->
+        <div class="bg-white rounded-lg shadow-sm border chat-container overflow-y-auto p-6 mb-4" id="chat-messages">
+            <div class="text-center text-gray-500 py-8">
+                <i class="fas fa-comments text-4xl mb-4"></i>
+                <p class="text-lg">Inicie uma conversa com o LLM</p>
+                <p class="text-sm">Digite sua mensagem abaixo e pressione Enter</p>
+            </div>
+        </div>
+
+        <!-- Typing Indicator -->
+        <div class="typing-indicator bg-white rounded-lg shadow-sm border p-4 mb-4" id="typing-indicator">
+            <div class="flex items-center space-x-2">
+                <div class="flex space-x-1">
+                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
+                    <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                </div>
+                <span class="text-gray-500 text-sm">LLM está digitando...</span>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="bg-white rounded-lg shadow-sm border p-4">
+            <form id="chat-form" class="flex space-x-4">
+                <div class="flex-1">
+                    <textarea
+                        id="message-input"
+                        rows="3"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                        placeholder="Digite sua mensagem aqui..."
+                        required
+                    ></textarea>
+                </div>
+                <div class="flex flex-col space-y-2">
+                    <button
+                        type="submit"
+                        id="send-button"
+                        class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <i class="fas fa-paper-plane mr-2"></i>Enviar
+                    </button>
+                    <button
+                        type="button"
+                        id="clear-button"
+                        class="bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600 transition-colors"
+                    >
+                        <i class="fas fa-trash mr-2"></i>Limpar
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="text-center text-sm text-gray-500 mt-4">
+            <span id="status-text">Pronto para conversar</span>
+        </div>
+    </main>
+
+    <script>
+        class ChatApp {
+            constructor() {
+                this.messages = [];
+                this.isTyping = false;
+                this.init();
+            }
+
+            async init() {
+                await this.loadModelInfo();
+                this.bindEvents();
+                this.loadConfig();
+            }
+
+            async loadModelInfo() {
+                try {
+                    const response = await fetch('/api/models');
+                    const data = await response.json();
+                    if (data.models && data.models.length > 0) {
+                        const model = data.models[0];
+                        document.getElementById('model-info').textContent = `Modelo: ${model.name}`;
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar modelos:', error);
+                }
+            }
+
+            async loadConfig() {
+                try {
+                    const response = await fetch('/api/config');
+                    const config = await response.json();
+                    console.log('Configuração carregada:', config);
+                } catch (error) {
+                    console.error('Erro ao carregar configuração:', error);
+                }
+            }
+
+            bindEvents() {
+                const form = document.getElementById('chat-form');
+                const input = document.getElementById('message-input');
+                const clearBtn = document.getElementById('clear-button');
+
+                form.addEventListener('submit', (e) => this.handleSubmit(e));
+                input.addEventListener('keydown', (e) => this.handleKeydown(e));
+                clearBtn.addEventListener('click', () => this.clearChat());
+
+                // Auto-resize textarea
+                input.addEventListener('input', () => {
+                    input.style.height = 'auto';
+                    input.style.height = input.scrollHeight + 'px';
+                });
+            }
+
+            handleKeydown(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.handleSubmit(e);
+                }
+            }
+
+            async handleSubmit(e) {
+                e.preventDefault();
+                const input = document.getElementById('message-input');
+                const message = input.value.trim();
+
+                if (!message || this.isTyping) return;
+
+                // Adicionar mensagem do usuário
+                this.addMessage('user', message);
+                input.value = '';
+                input.style.height = 'auto';
+
+                // Mostrar indicador de digitação
+                this.showTyping(true);
+
+                try {
+                    // Enviar para o LLM
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ message })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        this.addMessage('assistant', data.response, {
+                            model: data.model,
+                            processing_time: data.processing_time,
+                            tokens_used: data.tokens_used
+                        });
+                        this.updateStatus(`Resposta gerada em ${data.processing_time.toFixed(2)}s`);
+                    } else {
+                        throw new Error(data.detail || 'Erro desconhecido');
+                    }
+                } catch (error) {
+                    console.error('Erro no chat:', error);
+                    this.addMessage('assistant', `❌ Erro: ${error.message}`, { error: true });
+                    this.updateStatus('Erro ao processar mensagem');
+                } finally {
+                    this.showTyping(false);
+                }
+            }
+
+            addMessage(role, content, metadata = {}) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message mb-4 ${role === 'user' ? 'text-right' : 'text-left'}`;
+
+                const isUser = role === 'user';
+                const bgColor = isUser ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900';
+                const icon = isUser ? 'fas fa-user' : 'fas fa-robot';
+
+                let metadataHtml = '';
+                if (metadata.model || metadata.processing_time) {
+                    metadataHtml = `
+                        <div class="text-xs text-gray-500 mt-2 ${isUser ? 'text-blue-200' : ''}">
+                            ${metadata.model ? `Modelo: ${metadata.model}` : ''}
+                            ${metadata.processing_time ? ` • Tempo: ${metadata.processing_time.toFixed(2)}s` : ''}
+                            ${metadata.tokens_used ? ` • Tokens: ${metadata.tokens_used.prompt + metadata.tokens_used.completion}` : ''}
+                        </div>
+                    `;
+                }
+
+                messageDiv.innerHTML = `
+                    <div class="inline-block max-w-3xl">
+                        <div class="flex items-start space-x-3 ${isUser ? 'flex-row-reverse space-x-reverse' : ''}">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 rounded-full ${bgColor} flex items-center justify-center">
+                                    <i class="${icon}"></i>
+                                </div>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="bg-white border rounded-lg px-4 py-3 shadow-sm">
+                                    <div class="whitespace-pre-wrap">${this.escapeHtml(content)}</div>
+                                    ${metadataHtml}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                const chatMessages = document.getElementById('chat-messages');
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                this.messages.push({ role, content, timestamp: new Date() });
+            }
+
+            showTyping(show) {
+                this.isTyping = show;
+                const indicator = document.getElementById('typing-indicator');
+                if (show) {
+                    indicator.classList.add('show');
+                } else {
+                    indicator.classList.remove('show');
+                }
+            }
+
+            clearChat() {
+                const chatMessages = document.getElementById('chat-messages');
+                chatMessages.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fas fa-comments text-4xl mb-4"></i>
+                        <p class="text-lg">Chat limpo</p>
+                        <p class="text-sm">Digite uma nova mensagem para começar</p>
+                    </div>
+                `;
+                this.messages = [];
+                this.updateStatus('Chat limpo');
+            }
+
+            updateStatus(text) {
+                document.getElementById('status-text').textContent = text;
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+
+        // Inicializar app quando a página carregar
+        document.addEventListener('DOMContentLoaded', () => {
+            new ChatApp();
+        });
+    </script>
+</body>
+</html> 

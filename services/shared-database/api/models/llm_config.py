@@ -48,7 +48,7 @@ class LLMConfig(Base):
             "provider": self.provider,
             "model": self.model,
             "base_url": self.base_url,
-            "temperature": self.temperature / 100.0,  # Converte para float
+            "temperature": self.temperature / 100.0 if self.temperature is not None else 0.7,  # Converte para float
             "max_tokens": self.max_tokens,
             "context_window": self.context_window,
             "rag_enabled": self.rag_enabled,

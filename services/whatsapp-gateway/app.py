@@ -163,19 +163,54 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
     # Por enquanto, apenas log
     log.info("autorizado %s -> encaminhar ao LLM: '%s'", sender, message_text)
     
-    # TODO: Integrar com módulo LLM
-    # llm_response = llm_service.process_message(db_user.id, sender, message_text)
-    # whatsapp_service.send_llm_response(sender, llm_response.text)
-    
-    # Resposta temporária até integrar com LLM
-    temp_response = (
-        f"Olá {db_user.get('name', 'usuário')}! 👋\n\n"
-        f"Recebi sua mensagem: \"{message_text}\"\n\n"
-        f"🔧 O módulo de IA ainda está sendo configurado.\n"
-        f"Em breve você terá respostas inteligentes!"
-    )
-    send_result = whatsapp_service.send_text_message(sender, temp_response)
-    
+    # Integrar com módulo LLM
+    try:
+        import requests
+        
+        # Fazer request para o LLM Service
+        llm_url = "http://llm-service:8003/api/chat"
+        llm_payload = {
+            "message": message_text,
+            "user_id": str(db_user.get("id")),
+            "user_name": db_user.get("name", "usuário")
+        }
+        
+        log.info("enviando para LLM: %s", llm_payload)
+        
+        llm_response = requests.post(llm_url, json=llm_payload, timeout=30)
+        
+        if llm_response.status_code == 200:
+            llm_data = llm_response.json()
+            ai_response = llm_data.get("response", "Desculpe, não consegui processar sua mensagem.")
+            
+            log.info("resposta do LLM recebida: %s", ai_response[:100] + "..." if len(ai_response) > 100 else ai_response)
+            
+            # Enviar resposta do LLM via WhatsApp
+            send_result = whatsapp_service.send_text_message(sender, ai_response)
+            
+        else:
+            log.error("erro no LLM Service: %s", llm_response.status_code)
+            # Fallback para resposta temporária
+            temp_response = (
+                f"Olá {db_user.get('name', 'usuário')}! 👋\n\n"
+                f"Recebi sua mensagem: \"{message_text}\"\n\n"
+                f"🔧 O módulo de IA está temporariamente indisponível.\n"
+                f"Tente novamente em alguns instantes!"
+            )
+            send_result = whatsapp_service.send_text_message(sender, temp_response)
+            
+    except Exception as e:
+        log.error("erro ao integrar com LLM: %s", str(e))
+        # Fallback para resposta temporária
+        temp_response = (
+            f"Olá {db_user.get('name', 'usuário')}! 👋\n\n"
+            f"Recebi sua mensagem: \"{message_text}\"\n\n"
+            f"🔧 Ocorreu um erro ao processar sua mensagem.\n"
+            f"Tente novamente em alguns instantes!"
+        )
+        send_result = whatsapp_service.send_text_message(sender, temp_response)
+
+    # Retorno da função webhook
     return {
         "status": "accepted", 
         "user_id": db_user["id"],
