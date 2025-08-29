@@ -43,7 +43,7 @@ services:
       - shared-network
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.8.0
     container_name: neoquima-qdrant
     ports:
       - "6333:6333"
@@ -53,12 +53,12 @@ services:
     environment:
       - QDRANT__SERVICE__HTTP_PORT=6333
       - QDRANT__SERVICE__GRPC_PORT=6334
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/collections"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:6333/collections"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
     networks:
       - shared-network
 
@@ -120,6 +120,27 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    networks:
+      - shared-network
+
+  rag-service:
+    build: ../services/rag-service
+    container_name: neoquima-rag-service
+    ports: ["8004:8004"]
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_URL=http://ollama:11434
+      - EMBEDDING_MODEL=nomic-embed-text
+      - CHUNK_SIZE=1000
+      - CHUNK_OVERLAP=200
+    depends_on:
+      - qdrant
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
       - shared-network
 

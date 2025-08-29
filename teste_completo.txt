@@ -1,0 +1,29 @@
+SISTEMA DE INTELIGÊNCIA ARTIFICIAL PARA EMPRESAS
+
+Este documento descreve um sistema completo de IA empresarial que inclui:
+
+1. CHATBOT INTELIGENTE
+   - Integração com WhatsApp Business
+   - Processamento de linguagem natural avançado
+   - Respostas contextuais e personalizadas
+   - Suporte a múltiplos idiomas
+
+2. SISTEMA RAG (RETRIEVAL-AUGMENTED GENERATION)
+   - Base de conhecimento vetorizada
+   - Busca semântica em documentos
+   - Integração com banco de dados Qdrant
+   - Processamento de PDFs, DOCXs e planilhas
+
+3. ADMINISTRAÇÃO CENTRALIZADA
+   - Interface web para gestão de usuários
+   - Configuração de parâmetros de IA
+   - Upload e gerenciamento de documentos
+   - Monitoramento de performance
+
+4. ARQUITETURA TÉCNICA
+   - Microserviços Docker
+   - Banco PostgreSQL compartilhado
+   - API REST com contratos OpenAPI
+   - Modelos de IA locais via Ollama
+
+Este sistema é ideal para empresas que precisam de atendimento automatizado inteligente e gestão eficiente de conhecimento corporativo.

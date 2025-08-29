@@ -1,0 +1,28 @@
+NEOQUIMA BOT - DOCUMENTO INTERNO PARA TESTE RAG
+
+1. Implantação On-Premises
+A solução será instalada em uma máquina virtual (VM) mantida pela Neoquima.
+O custo total da implantação é de R$ 49.958,64, dividido em 6 parcelas mensais iguais,
+com início em 05 de agosto de 2025.
+
+2. Consultoria Técnica Pós-Implantação
+Após a implantação, será iniciado um contrato de consultoria técnica mensal no valor de R$ 4.500,00.
+Se a Neoquima optar por iniciar a operação antes do prazo de 6 meses, a cobrança passa a valer
+a partir da ativação do sistema.
+
+3. Produto Químico NQ-204
+- A dosagem típica de manutenção é de 15 ppm para cada ppm de dureza total na água de alimentação,
+até o limite de 3 ppm.
+- Para durezas entre 3,0 e 15,0 ppm, aplica-se 25 ppm para cada ppm de dureza total.
+- O produto deve ser dosado de forma contínua por bomba dosadora em linha ou no tanque de alimentação.
+- A alcalinidade hidróxida deve ser mantida entre 200 e 500 ppm.
+
+4. Incompatibilidades
+O NQ-204 não deve ser usado junto com produtos à base de sulfito, como o NQ-202.
+Eles precisam ser dosados separadamente.
+
+5. Aplicação não recomendada
+O NQ-204 não deve ser aplicado diretamente no tanque de condensado.
+
+
+

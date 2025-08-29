@@ -1,0 +1,1 @@
+Este é um documento de teste para o sistema RAG. Ele contém informações sobre inteligência artificial e processamento de linguagem natural. O sistema deve ser capaz de extrair e vetorizar este texto para permitir buscas semânticas posteriores.
