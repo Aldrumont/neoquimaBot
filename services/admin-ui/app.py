@@ -7,7 +7,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'admin-secret-key-2024')
 
 # Configurações
-SHARED_API_URL = os.getenv('SHARED_DATABASE_URL', 'http://localhost:8000')
+SHARED_API_URL = os.getenv('SHARED_DATABASE_URL', 'http://shared-database-api:8000')
 API_BASE_URL = f"{SHARED_API_URL}/api/v1/whatsapp"
 
 @app.route('/')
@@ -95,37 +95,26 @@ def ngrok_status():
         # Como estamos em container, vamos verificar se o webhook está respondendo
         # em vez de tentar acessar o ngrok diretamente
         
-        # Verificar se o WhatsApp Gateway está rodando (porta 8081)
+        # Verificar saúde do WhatsApp Gateway
         try:
-            response = requests.get("http://localhost:8081/health", timeout=2)
-            if response.ok:
-                # Se o gateway está rodando, assumir que ngrok está ativo
-                # (já que testamos que está funcionando)
-                return jsonify({
-                    "status": "active",
-                    "url": "https://9cdf1280a932.ngrok-free.app",
-                    "local_addr": "http://localhost:8081",
-                    "proto": "https",
-                    "note": "Status inferido via gateway"
-                })
+            response = requests.get("http://whatsapp-gateway:8000/health", timeout=2)
+            if response.status_code == 200:
+                whatsapp_status = "🟢 Online"
+            else:
+                whatsapp_status = "🟡 Erro"
         except:
-            pass
+            whatsapp_status = "🔴 Offline"
         
-        # Fallback: verificar se conseguimos acessar o webhook externo
-        try:
-            response = requests.get("https://9cdf1280a932.ngrok-free.app/webhook?hub.mode=subscribe&hub.verify_token=neoquima_webhook_2024&hub.challenge=test", timeout=5)
-            if response.status_code in [200, 400, 401]:  # Qualquer resposta válida indica que está ativo
-                return jsonify({
-                    "status": "active",
-                    "url": "https://9cdf1280a932.ngrok-free.app",
-                    "local_addr": "http://localhost:8081",
-                    "proto": "https",
-                    "note": "Status verificado via webhook externo"
-                })
-        except:
-            pass
+        # Status dos serviços
+        services_status = {
+            "shared_database": "🟢 Online",
+            "whatsapp_gateway": whatsapp_status,
+            "local_addr": "http://whatsapp-gateway:8000",
+            "proto": "https",
+            "note": "Status inferido via gateway"
+        }
         
-        return jsonify({"status": "inactive", "note": "Não foi possível verificar o status"})
+        return jsonify(services_status)
         
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})

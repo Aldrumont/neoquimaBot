@@ -55,6 +55,9 @@ class ConversationHandler:
         start_time = datetime.now()
         correlation_id = str(uuid.uuid4())
         
+        log.info(f"[CONTEXTO] Iniciando processamento de mensagem: {correlation_id}")
+        log.info(f"[CONTEXTO] Número: {whatsapp_number}, Mensagem: {message_text[:100]}...")
+        
         try:
             log.info(f"[{correlation_id}] Processando mensagem de {whatsapp_number}")
             
@@ -323,7 +326,7 @@ class ConversationHandler:
                 rag_context
             )
             
-            # Fazer request para LLM Service
+            # Chamar LLM
             llm_payload = {
                 "message": prompt,
                 "user_id": str(whatsapp_number),
@@ -336,7 +339,7 @@ class ConversationHandler:
             llm_response = requests.post(
                 self.llm_url, 
                 json=llm_payload, 
-                timeout=30
+                timeout=60  # Aumentado de 30 para 60 segundos
             )
             
             if llm_response.status_code == 200:
@@ -378,7 +381,7 @@ class ConversationHandler:
                     "total_tokens": total_tokens,
                     "rag_context": rag_context
                 }
-            
+ 
             else:
                 log.error(f"[{correlation_id}] Erro LLM: {llm_response.status_code}")
                 return self._create_fallback_response(message_text)
@@ -394,11 +397,56 @@ class ConversationHandler:
         rag_context: Optional[Dict]
     ) -> str:
         """Constrói prompt estruturado para o LLM"""
+        print(f"[DEBUG] _build_structured_prompt chamado!")
+        print(f"[DEBUG] session_data: {session_data}")
+        print(f"[DEBUG] message_text: {message_text}")
+        
+        log.info(f"[CONTEXTO] Iniciando construção do prompt para sessão: {session_data.get('session_key')}")
+        log.info(f"[CONTEXTO] Mensagem: {message_text[:100]}...")
+        
         prompt_parts = []
         
         # Contexto da sessão
         if session_data.get("rolling_summary"):
             prompt_parts.append(f"📝 RESUMO DA CONVERSA:\n{session_data['rolling_summary']}\n")
+            log.info(f"[CONTEXTO] Resumo incluído: {session_data['rolling_summary'][:100]}...")
+        else:
+            log.info("[CONTEXTO] Nenhum resumo disponível para a sessão")
+            print("[DEBUG] Nenhum resumo disponível")
+        
+        print(f"[DEBUG] Após resumo, prompt_parts tem {len(prompt_parts)} elementos")
+        
+        # HISTÓRICO DE CONVERSAS ANTERIORES
+        try:
+            print("[DEBUG] Tentando buscar histórico...")
+            # Buscar histórico de conversas da sessão
+            conversation_history = self.shared_db.get_conversation_history(
+                session_data["session_key"], 
+                limit=10  # Últimas 10 interações
+            )
+            
+            print(f"[DEBUG] Histórico retornado: {conversation_history}")
+            
+            if conversation_history and len(conversation_history) > 0:
+                prompt_parts.append("💬 HISTÓRICO DA CONVERSA:\n")
+                
+                for turn in conversation_history:
+                    role_emoji = "👤" if turn["role"] == "user" else "🤖"
+                    prompt_parts.append(f"{role_emoji} {turn['role'].upper()}: {turn['content']}")
+                
+                prompt_parts.append("")  # Linha em branco para separar
+                
+                log.info(f"[CONTEXTO] Histórico incluído: {len(conversation_history)} turnos")
+                print(f"[DEBUG] Histórico incluído: {len(conversation_history)} turnos")
+            else:
+                log.info("[CONTEXTO] Nenhum histórico encontrado para a sessão")
+                print("[DEBUG] Nenhum histórico encontrado")
+                
+        except Exception as e:
+            log.error(f"[CONTEXTO] Erro ao buscar histórico: {str(e)}")
+            print(f"[DEBUG] Erro ao buscar histórico: {str(e)}")
+            import traceback
+            traceback.print_exc()
         
         # Contexto RAG
         if rag_context and rag_context.get("citations"):
@@ -412,6 +460,7 @@ class ConversationHandler:
             "🤖 INSTRUÇÕES:\n"
             "Você é um assistente virtual da Neoquima, empresa especializada em tratamento de água.\n"
             "Responda de forma clara, profissional e útil.\n"
+            "IMPORTANTE: Use o histórico da conversa acima para manter contexto e continuidade.\n"
             "Se houver informações relevantes acima, use-as para enriquecer sua resposta.\n"
             "Seja conciso mas completo.\n\n"
             "💬 PERGUNTA DO USUÁRIO:\n"
@@ -419,7 +468,16 @@ class ConversationHandler:
         
         prompt_parts.append(message_text)
         
-        return "\n".join(prompt_parts)
+        final_prompt = "\n".join(prompt_parts)
+        
+        # LOG COMPLETO DO PROMPT PARA DEBUG
+        log.info(f"[CONTEXTO] PROMPT COMPLETO ENVIADO PARA LLM:")
+        log.info(f"[CONTEXTO] {'='*50}")
+        log.info(f"[CONTEXTO] {final_prompt}")
+        log.info(f"[CONTEXTO] {'='*50}")
+        log.info(f"[CONTEXTO] Tamanho total: {len(final_prompt)} caracteres")
+        
+        return final_prompt
     
     def _save_conversation_turn(
         self, 

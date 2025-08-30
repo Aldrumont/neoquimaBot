@@ -143,27 +143,28 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
     # Registrar interação (via API compartilhada)
     shared_db.record_interaction(db_user["id"], message_text)
     
+    # TEMPORARIAMENTE COMENTADO - MODO DE TESTE DESABILITADO
     # Verificar se é mensagem de teste
-    if whatsapp_service.is_test_message(message_text):
-        log.info("modo teste ativado para %s", sender)
-        # Enviar resposta de teste
-        send_result = whatsapp_service.send_test_response(sender, message_text, db_user)
-        return {
-            "status": "test_mode",
-            "user_id": db_user["id"],
-            "message_sent": send_result["success"],
-            "test_info": {
-                "number": sender,
-                "message": message_text,
-                "user_data": {
-                    "id": db_user["id"],
-                    "name": db_user.get("name", "N/A"),
-                    "company": db_user.get("company", "N/A"),
-                    "active": db_user.get("active", False),
-                    "role": db_user.get("role", "N/A")
-                }
-            }
-        }
+    # if whatsapp_service.is_test_message(message_text):
+    #     log.info("modo teste ativado para %s", sender)
+    #     # Enviar resposta de teste
+    #     send_result = whatsapp_service.send_test_response(sender, message_text, db_user)
+    #     return {
+    #         "status": "test_mode",
+    #         "user_id": db_user["id"],
+    #         "message_sent": send_result["success"],
+    #         "test_info": {
+    #             "number": sender,
+    #             "message": message_text,
+    #             "user_data": {
+    #                 "id": db_user["id"],
+    #                 "name": db_user.get("name", "N/A"),
+    #                 "company": db_user.get("company", "N/A"),
+    #                 "active": db_user.get("active", False),
+    #                 "role": db_user.get("role", "N/A")
+    #             }
+    #         }
+    #     }
     
     # >>> PROCESSAMENTO COM SISTEMA DE CONTEXTO CONVERSACIONAL <<<
     log.info("autorizado %s -> processando com contexto: '%s'", sender, message_text)

@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Neoquima LLM Service", version="1.0.0")
 
 # Configurações
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-SHARED_DB_URL = os.getenv("SHARED_DATABASE_URL", "http://localhost:8000")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
+SHARED_DB_URL = os.getenv("SHARED_DATABASE_URL", "http://shared-database-api:8000")
 DEFAULT_MODEL = "qwen2.5:3b-instruct-q4_K_M"
 
 # Templates e arquivos estáticos

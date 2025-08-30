@@ -14,6 +14,10 @@ class SharedDatabaseService:
         """Faz requisição para a API compartilhada"""
         url = f"{self.base_url}{self.api_prefix}{endpoint}"
         
+        print(f"[DEBUG] _make_request: {method} {url}")
+        print(f"[DEBUG] Params: {params}")
+        print(f"[DEBUG] Data: {data}")
+        
         try:
             if method.upper() == "GET":
                 response = requests.get(url, params=params, timeout=10)
@@ -26,12 +30,17 @@ class SharedDatabaseService:
             else:
                 raise ValueError(f"Método HTTP não suportado: {method}")
             
+            print(f"[DEBUG] Response status: {response.status_code}")
+            print(f"[DEBUG] Response headers: {dict(response.headers)}")
+            
             response.raise_for_status()
             
             if response.status_code == 204:  # No Content
                 return {"success": True}
             
-            return response.json()
+            result = response.json()
+            print(f"[DEBUG] Response JSON: {result}")
+            return result
             
         except requests.exceptions.RequestException as e:
             print(f"❌ Erro na requisição para API compartilhada: {e}")
@@ -98,19 +107,64 @@ class SharedDatabaseService:
         }
     
     def search_users(self, search_term: str = "", limit: int = 100, skip: int = 0) -> Dict[str, Any]:
-        """Busca usuários com filtros"""
+        """Busca usuários por termo"""
         params = {
             "search": search_term,
             "limit": limit,
             "skip": skip
         }
-        
         response = self._make_request("GET", "/whatsapp/users", params=params)
         
         if "error" in response:
             return {"users": [], "total": 0}
         
         return response
+    
+    def get_conversation_history(self, session_key: str, limit: int = 10) -> Optional[List[Dict[str, Any]]]:
+        """Busca histórico de conversas de uma sessão"""
+        import urllib.parse
+        
+        # TEMPORARIAMENTE - usar URL sem codificação para testar
+        # encoded_session_key = urllib.parse.quote_plus(session_key)
+        encoded_session_key = session_key
+        
+        params = {
+            "session_key": encoded_session_key,
+            "limit": limit
+        }
+        
+        print(f"[DEBUG] Buscando histórico para session_key: {session_key}")
+        print(f"[DEBUG] URL codificada: {encoded_session_key}")
+        print(f"[DEBUG] Params: {params}")
+        
+        response = self._make_request("GET", "/conversations/turns", params=params)
+        
+        print(f"[DEBUG] Response da API: {response}")
+        print(f"[DEBUG] Tipo da response: {type(response)}")
+        
+        if "error" in response:
+            print(f"❌ Erro ao buscar histórico: {response['error']}")
+            return None
+        
+        # Converter para formato esperado pelo conversation_handler
+        turns = []
+        for turn in response:
+            print(f"[DEBUG] Processando turn: {turn}")
+            turns.append({
+                "role": turn.get("role", "unknown"),
+                "content": turn.get("content", ""),
+                "turn_number": turn.get("turn_number", 0),
+                "created_at": turn.get("created_at", "")
+            })
+        
+        print(f"[DEBUG] Turns processados: {turns}")
+        
+        # Ordenar por número do turno (crescente para manter ordem cronológica)
+        turns.sort(key=lambda x: x["turn_number"])
+        
+        print(f"[DEBUG] Turns ordenados: {turns}")
+        
+        return turns
 
     # ========= MÉTODOS PARA SISTEMA DE CONTEXTO CONVERSACIONAL =========
     
