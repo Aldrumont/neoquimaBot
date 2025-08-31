@@ -10,7 +10,7 @@ services:
     ports: ["5433:5432"]
     volumes:
       - shared_postgres_data:/var/lib/postgresql/data
-      - /home/ajunior/Documents/dev/neoquimaBot/services/shared-database/postgres/init:/docker-entrypoint-initdb.d
+      - ../services/shared-database/postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U neoquima_admin -d neoquima_shared"]
       interval: 10s
