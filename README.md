@@ -98,6 +98,34 @@ Sistema completo de chatbot inteligente com integração WhatsApp, RAG (Retrieva
 - ✅ **Integração RAG contextualizada**:
   - Busca multi-coleção
   - Citações com scores
+
+## 🔍 **DEBUG E ANÁLISE**
+
+### 📊 **Salvamento de Payloads JSON (Opcional)**
+O sistema pode salvar automaticamente os payloads enviados para o LLM e suas respostas para análise detalhada:
+
+- **Variável de ambiente**: `SAVE_LLM_PAYLOADS=true`
+- **Arquivos gerados**:
+  - `llm_payload_[timestamp]_[correlation_id].json` - Payload enviado para LLM
+  - `llm_response_[timestamp]_[correlation_id].json` - Resposta recebida do LLM
+- **Conteúdo dos arquivos**:
+  - Histórico completo da conversa
+  - Prompt estruturado enviado
+  - Resposta do LLM
+  - Metadados da sessão
+  - Contexto RAG (se aplicável)
+- **Uso recomendado**: Apenas para desenvolvimento e debug
+- **Padrão**: Desabilitado (`SAVE_LLM_PAYLOADS=false`)
+
+### 🚀 **Como ativar para debug:**
+```bash
+# No arquivo .env ou variável de ambiente
+SAVE_LLM_PAYLOADS=true
+
+# Ou via Docker Compose
+environment:
+  - SAVE_LLM_PAYLOADS=true
+```
   - Contexto relevante para LLM
 
 ## 🧪 **TESTES REALIZADOS**

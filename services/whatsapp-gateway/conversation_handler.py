@@ -334,6 +334,62 @@ class ConversationHandler:
                 "correlation_id": correlation_id
             }
             
+            # LOG DETALHADO DO PAYLOAD PARA DEBUG
+            log.info(f"[{correlation_id}] ===== PAYLOAD ENVIADO PARA LLM =====")
+            log.info(f"[{correlation_id}] URL: {self.llm_url}")
+            log.info(f"[{correlation_id}] Payload completo:")
+            log.info(f"[{correlation_id}] {llm_payload}")
+            log.info(f"[{correlation_id}] Tamanho do prompt: {len(prompt)} caracteres")
+            log.info(f"[{correlation_id}] ======================================")
+            
+            # Print no console também para facilitar debug
+            print(f"\n[DEBUG] ===== PAYLOAD ENVIADO PARA LLM =====")
+            print(f"[DEBUG] Correlation ID: {correlation_id}")
+            print(f"[DEBUG] URL: {self.llm_url}")
+            print(f"[DEBUG] Payload: {llm_payload}")
+            print(f"[DEBUG] Prompt completo:")
+            print(f"[DEBUG] {'='*50}")
+            print(f"[DEBUG] {prompt}")
+            print(f"[DEBUG] {'='*50}")
+            print(f"[DEBUG] Tamanho: {len(prompt)} caracteres")
+            print(f"[DEBUG] ======================================\n")
+            
+            # SALVAR PAYLOAD EM ARQUIVO JSON PARA ANÁLISE (SÓ EM MODO DEBUG)
+            if os.getenv('SAVE_LLM_PAYLOADS', 'false').lower() == 'true':
+                try:
+                    import json
+                    from datetime import datetime
+                    
+                    # Criar nome do arquivo com timestamp e correlation_id
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"llm_payload_{timestamp}_{correlation_id[:8]}.json"
+                    
+                    # Dados completos para salvar
+                    payload_data = {
+                        "timestamp": datetime.now().isoformat(),
+                        "correlation_id": correlation_id,
+                        "whatsapp_number": whatsapp_number,
+                        "session_data": session_data,
+                        "llm_url": self.llm_url,
+                        "llm_payload": llm_payload,
+                        "prompt_completo": prompt,
+                        "prompt_tamanho": len(prompt),
+                        "rag_context": rag_context
+                    }
+                    
+                    # Salvar em arquivo JSON
+                    with open(filename, 'w', encoding='utf-8') as f:
+                        json.dump(payload_data, f, indent=2, ensure_ascii=False, default=str)
+                    
+                    print(f"[DEBUG] ✅ Payload salvo em: {filename}")
+                    log.info(f"[{correlation_id}] Payload salvo em arquivo: {filename}")
+                    
+                except Exception as e:
+                    print(f"[DEBUG] ❌ Erro ao salvar payload: {str(e)}")
+                    log.error(f"[{correlation_id}] Erro ao salvar payload: {str(e)}")
+            else:
+                log.debug(f"[{correlation_id}] Salvamento de payloads JSON desabilitado")
+            
             log.info(f"[{correlation_id}] Enviando para LLM: {len(prompt)} chars")
             
             llm_response = requests.post(
@@ -346,6 +402,61 @@ class ConversationHandler:
                 llm_data = llm_response.json()
                 ai_response = llm_data.get("response", "Desculpe, não consegui processar sua mensagem.")
                 total_tokens = llm_data.get("total_tokens", 0)
+                
+                # LOG DETALHADO DA RESPOSTA DO LLM
+                log.info(f"[{correlation_id}] ===== RESPOSTA RECEBIDA DO LLM =====")
+                log.info(f"[{correlation_id}] Status: {llm_response.status_code}")
+                log.info(f"[{correlation_id}] Resposta completa: {llm_data}")
+                log.info(f"[{correlation_id}] AI Response: {ai_response}")
+                log.info(f"[{correlation_id}] Total Tokens: {total_tokens}")
+                log.info(f"[{correlation_id}] ======================================")
+                
+                # Print no console também
+                print(f"\n[DEBUG] ===== RESPOSTA RECEBIDA DO LLM =====")
+                print(f"[DEBUG] Correlation ID: {correlation_id}")
+                print(f"[DEBUG] Status: {llm_response.status_code}")
+                print(f"[DEBUG] Resposta completa: {llm_data}")
+                print(f"[DEBUG] AI Response: {ai_response}")
+                print(f"[DEBUG] Total Tokens: {total_tokens}")
+                print(f"[DEBUG] ======================================\n")
+                
+                # SALVAR RESPOSTA DO LLM EM ARQUIVO JSON PARA ANÁLISE (SÓ EM MODO DEBUG)
+                if os.getenv('SAVE_LLM_PAYLOADS', 'false').lower() == 'true':
+                    try:
+                        import json
+                        from datetime import datetime
+                        
+                        # Criar nome do arquivo com timestamp e correlation_id
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"llm_response_{timestamp}_{correlation_id[:8]}.json"
+                        
+                        # Dados completos da resposta para salvar
+                        response_data = {
+                            "timestamp": datetime.now().isoformat(),
+                            "correlation_id": correlation_id,
+                            "whatsapp_number": whatsapp_number,
+                            "session_data": session_data,
+                            "llm_url": self.llm_url,
+                            "llm_response_status": llm_response.status_code,
+                            "llm_response_headers": dict(llm_response.headers),
+                            "llm_response_data": llm_data,
+                            "ai_response": ai_response,
+                            "total_tokens": total_tokens,
+                            "rag_context": rag_context
+                        }
+                        
+                        # Salvar em arquivo JSON
+                        with open(filename, 'w', encoding='utf-8') as f:
+                            json.dump(response_data, f, indent=2, ensure_ascii=False, default=str)
+                        
+                        print(f"[DEBUG] ✅ Resposta LLM salva em: {filename}")
+                        log.info(f"[{correlation_id}] Resposta LLM salva em arquivo: {filename}")
+                        
+                    except Exception as e:
+                        print(f"[DEBUG] ❌ Erro ao salvar resposta LLM: {str(e)}")
+                        log.error(f"[{correlation_id}] Erro ao salvar resposta LLM: {str(e)}")
+                else:
+                    log.debug(f"[{correlation_id}] Salvamento de respostas LLM JSON desabilitado")
                 
                 log.info(f"[{correlation_id}] Resposta LLM: {len(ai_response)} chars, {total_tokens} tokens")
                 
@@ -383,6 +494,29 @@ class ConversationHandler:
                 }
  
             else:
+                # LOG DETALHADO DO ERRO DO LLM
+                log.error(f"[{correlation_id}] ===== ERRO NA RESPOSTA DO LLM =====")
+                log.error(f"[{correlation_id}] Status: {llm_response.status_code}")
+                log.error(f"[{correlation_id}] Response Headers: {dict(llm_response.headers)}")
+                try:
+                    error_body = llm_response.text
+                    log.error(f"[{correlation_id}] Response Body: {error_body}")
+                except:
+                    log.error(f"[{correlation_id}] Não foi possível ler o body da resposta")
+                log.error(f"[{correlation_id}] ======================================")
+                
+                # Print no console também
+                print(f"\n[DEBUG] ===== ERRO NA RESPOSTA DO LLM =====")
+                print(f"[DEBUG] Correlation ID: {correlation_id}")
+                print(f"[DEBUG] Status: {llm_response.status_code}")
+                print(f"[DEBUG] Response Headers: {dict(llm_response.headers)}")
+                try:
+                    error_body = llm_response.text
+                    print(f"[DEBUG] Response Body: {error_body}")
+                except:
+                    print(f"[DEBUG] Não foi possível ler o body da resposta")
+                print(f"[DEBUG] ======================================\n")
+                
                 log.error(f"[{correlation_id}] Erro LLM: {llm_response.status_code}")
                 return self._create_fallback_response(message_text)
                 
@@ -430,17 +564,35 @@ class ConversationHandler:
             if conversation_history and len(conversation_history) > 0:
                 prompt_parts.append("💬 HISTÓRICO DA CONVERSA:\n")
                 
-                for turn in conversation_history:
+                # LOG DETALHADO DO HISTÓRICO
+                log.info(f"[CONTEXTO] ===== HISTÓRICO DA CONVERSA =====")
+                log.info(f"[CONTEXTO] Sessão: {session_data.get('session_key')}")
+                log.info(f"[CONTEXTO] Total de turnos: {len(conversation_history)}")
+                
+                for i, turn in enumerate(conversation_history):
                     role_emoji = "👤" if turn["role"] == "user" else "🤖"
                     prompt_parts.append(f"{role_emoji} {turn['role'].upper()}: {turn['content']}")
+                    
+                    # Log detalhado de cada turno
+                    log.info(f"[CONTEXTO] Turno {i+1}: {turn['role']} - {turn['content'][:100]}...")
                 
                 prompt_parts.append("")  # Linha em branco para separar
                 
+                log.info(f"[CONTEXTO] ======================================")
                 log.info(f"[CONTEXTO] Histórico incluído: {len(conversation_history)} turnos")
                 print(f"[DEBUG] Histórico incluído: {len(conversation_history)} turnos")
             else:
-                log.info("[CONTEXTO] Nenhum histórico encontrado para a sessão")
-                print("[DEBUG] Nenhum histórico encontrado")
+                log.info("[CONTEXTO] ===== NENHUM HISTÓRICO ENCONTRADO =====")
+                log.info(f"[CONTEXTO] Sessão: {session_data.get('session_key')}")
+                log.info(f"[CONTEXTO] WhatsApp Number: {session_data.get('whatsapp_number')}")
+                log.info(f"[CONTEXTO] Session ID: {session_data.get('session_id')}")
+                log.info("[CONTEXTO] ======================================")
+                
+                print("[DEBUG] ===== NENHUM HISTÓRICO ENCONTRADO =====")
+                print(f"[DEBUG] Sessão: {session_data.get('session_key')}")
+                print(f"[DEBUG] WhatsApp Number: {session_data.get('whatsapp_number')}")
+                print(f"[DEBUG] Session ID: {session_data.get('session_id')}")
+                print("[DEBUG] ======================================")
                 
         except Exception as e:
             log.error(f"[CONTEXTO] Erro ao buscar histórico: {str(e)}")

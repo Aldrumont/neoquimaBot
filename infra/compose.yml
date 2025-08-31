@@ -111,6 +111,8 @@ services:
       WHATSAPP_PHONE_ID: ${WHATSAPP_PHONE_ID}
       # allowlist inicial (opcional). Ex.: +5511999998888,+353831112222
       ALLOWLIST: ""
+      # Debug: Salvar payloads LLM em arquivos JSON (false por padrão)
+      SAVE_LLM_PAYLOADS: ${SAVE_LLM_PAYLOADS:-false}
     ports: ["8081:8000"]
     depends_on:
       shared-postgres:
