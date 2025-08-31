@@ -142,27 +142,27 @@ def call_external_via_litellm(message: str, config: LLMConfig) -> Dict[str, Any]
                 os.environ["OPENAI_API_KEY"] = config.api_key
             if config.base_url:
                 os.environ["OPENAI_API_BASE"] = config.base_url
-            model_name = "gpt-4o-mini"  # Modelo real, não o prefixo
+            model_name = config.model  # Usar o modelo da configuração
             
         elif config.provider == "anthropic":
             # Usar variável de ambiente se config.api_key for None
             if config.api_key:
                 os.environ["ANTHROPIC_API_KEY"] = config.api_key
-            model_name = "claude-3-5-sonnet-20241022"
+            model_name = config.model  # Usar o modelo da configuração
             
         elif config.provider == "google":
             # Usar variável de ambiente se config.api_key for None
             if config.api_key:
                 os.environ["GOOGLE_API_KEY"] = config.api_key
-            model_name = "gemini/gemini-2.5-flash-lite"
+            model_name = config.model  # Usar o modelo da configuração
             
-        elif config.provider == "deepseak":
+        elif config.provider == "deepseek":
             # Usar variável de ambiente se config.api_key for None
             if config.api_key:
                 os.environ["DEEPSEEK_API_KEY"] = config.api_key
             if config.base_url:
                 os.environ["DEEPSEEK_API_BASE"] = config.base_url
-            model_name = "deepseek-chat"
+            model_name = config.model  # Usar o modelo da configuração
             
         else:
             return {

@@ -15,6 +15,11 @@ def index():
     """Página principal do Admin UI"""
     return render_template('index.html')
 
+@app.route('/llm')
+def llm_config():
+    """Página de configuração do LLM"""
+    return render_template('llm.html')
+
 @app.route('/users')
 def users():
     """Página de gerenciamento de usuários"""
@@ -87,6 +92,46 @@ def health():
         "timestamp": datetime.now().isoformat(),
         "shared_api_url": SHARED_API_URL
     })
+
+@app.route('/api/llm/config')
+def get_llm_config():
+    """Obtém configuração atual do LLM"""
+    try:
+        response = requests.get(f"{SHARED_API_URL.replace('/api/v1/whatsapp', '')}/llm/config")
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": "Erro ao buscar configuração LLM"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Erro de conexão: {str(e)}"}), 500
+
+@app.route('/api/llm/config', methods=['PUT'])
+def update_llm_config():
+    """Atualiza configuração do LLM"""
+    try:
+        config_data = request.json
+        response = requests.put(f"{SHARED_API_URL.replace('/api/v1/whatsapp', '')}/llm/config", json=config_data)
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify(response.json()), response.status_code
+    except Exception as e:
+        return jsonify({"error": f"Erro de conexão: {str(e)}"}), 500
+
+@app.route('/api/llm/test', methods=['POST'])
+def test_llm():
+    """Testa o LLM com uma pergunta"""
+    try:
+        test_data = request.json
+        llm_service_url = "http://llm-service:8003"
+        
+        response = requests.post(f"{llm_service_url}/api/chat", json=test_data, timeout=60)
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": f"Erro LLM: {response.text}"}), response.status_code
+    except Exception as e:
+        return jsonify({"error": f"Erro de conexão: {str(e)}"}), 500
 
 @app.route('/api/ngrok-status')
 def ngrok_status():
