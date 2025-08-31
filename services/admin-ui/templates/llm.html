@@ -93,6 +93,57 @@
                                 </select>
                             </div>
                             
+                            <!-- API Key Fields (hidden by default) -->
+                            <div id="apiKeyFields" style="display: none;">
+                                <div class="mb-3" id="openaiApiKeyField" style="display: none;">
+                                    <label for="openaiApiKey" class="form-label">OpenAI API Key</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="openaiApiKey" name="openaiApiKey" 
+                                               placeholder="sk-...">
+                                        <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('openaiApiKey')">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                    </div>
+                                    <small class="form-text text-muted">Chave da API OpenAI para GPT-4o, GPT-3.5, etc.</small>
+                                </div>
+                                
+                                <div class="mb-3" id="googleApiKeyField" style="display: none;">
+                                    <label for="googleApiKey" class="form-label">Google API Key</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="googleApiKey" name="googleApiKey" 
+                                               placeholder="AIza...">
+                                        <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('googleApiKey')">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                    </div>
+                                    <small class="form-text text-muted">Chave da API Google para Gemini</small>
+                                </div>
+                                
+                                <div class="mb-3" id="anthropicApiKeyField" style="display: none;">
+                                    <label for="anthropicApiKey" class="form-label">Anthropic API Key</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="anthropicApiKey" name="anthropicApiKey" 
+                                               placeholder="sk-ant-...">
+                                        <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('anthropicApiKey')">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                    </div>
+                                    <small class="form-text text-muted">Chave da API Anthropic para Claude</small>
+                                </div>
+                                
+                                <div class="mb-3" id="deepseekApiKeyField" style="display: none;">
+                                    <label for="deepseekApiKey" class="form-label">DeepSeek API Key</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="deepseekApiKey" name="deepseekApiKey" 
+                                               placeholder="sk-...">
+                                        <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('deepseekApiKey')">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                    </div>
+                                    <small class="form-text text-muted">Chave da API DeepSeek</small>
+                                </div>
+                            </div>
+                            
                             <div class="mb-3">
                                 <label for="model" class="form-label">Modelo</label>
                                 <select class="form-select" id="model" name="model" required>

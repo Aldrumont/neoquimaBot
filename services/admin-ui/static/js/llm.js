@@ -84,6 +84,55 @@ function updateModelOptions(provider) {
             modelSelect.appendChild(option);
         });
     }
+    
+    // Gerenciar campos de API key
+    updateApiKeyFields(provider);
+}
+
+function updateApiKeyFields(provider) {
+    const apiKeyFields = document.getElementById('apiKeyFields');
+    const openaiField = document.getElementById('openaiApiKeyField');
+    const googleField = document.getElementById('googleApiKeyField');
+    const anthropicField = document.getElementById('anthropicApiKeyField');
+    const deepseekField = document.getElementById('deepseekApiKeyField');
+    
+    // Esconder todos os campos primeiro
+    openaiField.style.display = 'none';
+    googleField.style.display = 'none';
+    anthropicField.style.display = 'none';
+    deepseekField.style.display = 'none';
+    
+    // Mostrar apenas o campo relevante para o provider selecionado
+    if (provider === 'openai') {
+        openaiField.style.display = 'block';
+        apiKeyFields.style.display = 'block';
+    } else if (provider === 'google') {
+        googleField.style.display = 'block';
+        apiKeyFields.style.display = 'block';
+    } else if (provider === 'anthropic') {
+        anthropicField.style.display = 'block';
+        apiKeyFields.style.display = 'block';
+    } else if (provider === 'deepseek') {
+        deepseekField.style.display = 'block';
+        apiKeyFields.style.display = 'block';
+    } else {
+        // Ollama não precisa de API key
+        apiKeyFields.style.display = 'none';
+    }
+}
+
+function togglePasswordVisibility(fieldId) {
+    const field = document.getElementById(fieldId);
+    const button = field.nextElementSibling;
+    const icon = button.querySelector('i');
+    
+    if (field.type === 'password') {
+        field.type = 'text';
+        icon.className = 'bi bi-eye-slash';
+    } else {
+        field.type = 'password';
+        icon.className = 'bi bi-eye';
+    }
 }
 
 async function loadCurrentConfig() {
@@ -142,6 +191,7 @@ function displayCurrentConfig(config) {
                         <strong>ID:</strong> ${config.id} | 
                         <strong>Status:</strong> <span class="badge bg-success">${config.is_active ? 'Ativo' : 'Inativo'}</span> | 
                         <strong>Atualizado:</strong> ${new Date(config.created_at).toLocaleString('pt-BR')}
+                        ${config.api_key ? ' | <strong>API Key:</strong> <span class="badge bg-info">Configurada</span>' : ''}
                     </small>
                 </div>
             </div>
@@ -169,12 +219,27 @@ function populateFormWithConfig(config) {
     document.getElementById('temperature').value = config.temperature;
     document.getElementById('tempValue').textContent = config.temperature;
     document.getElementById('max_tokens').value = config.max_tokens;
+    
+    // Preencher campos de API key se existirem
+    if (config.api_key) {
+        if (config.provider === 'openai') {
+            document.getElementById('openaiApiKey').value = config.api_key;
+        } else if (config.provider === 'google') {
+            document.getElementById('googleApiKey').value = config.api_key;
+        } else if (config.provider === 'anthropic') {
+            document.getElementById('anthropicApiKey').value = config.api_key;
+        } else if (config.provider === 'deepseek') {
+            document.getElementById('deepseekApiKey').value = config.api_key;
+        }
+    }
 }
 
 async function saveConfiguration() {
     const formData = new FormData(document.getElementById('llmConfigForm'));
+    const provider = formData.get('provider');
+    
     const config = {
-        provider: formData.get('provider'),
+        provider: provider,
         model: formData.get('model'),
         temperature: parseFloat(formData.get('temperature')),
         max_tokens: parseInt(formData.get('max_tokens')),
@@ -182,6 +247,24 @@ async function saveConfiguration() {
         rag_enabled: true,
         default_rag_collection: 'neoquima'
     };
+    
+    // Adicionar API key se for um provider que precisa
+    if (provider !== 'ollama') {
+        let apiKey = null;
+        if (provider === 'openai') {
+            apiKey = document.getElementById('openaiApiKey').value.trim();
+        } else if (provider === 'google') {
+            apiKey = document.getElementById('googleApiKey').value.trim();
+        } else if (provider === 'anthropic') {
+            apiKey = document.getElementById('anthropicApiKey').value.trim();
+        } else if (provider === 'deepseek') {
+            apiKey = document.getElementById('deepseekApiKey').value.trim();
+        }
+        
+        if (apiKey) {
+            config.api_key = apiKey;
+        }
+    }
     
     try {
         const response = await fetch('/api/llm/config', {
