@@ -45,15 +45,27 @@ class LLMConfig(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 1000
     context_window: int = 4096
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    additional_config: Optional[Dict[str, Any]] = None
 
 # ========= Funções auxiliares =========
 def get_llm_config() -> LLMConfig:
     """Obtém configurações do LLM do banco compartilhado"""
     try:
-        response = requests.get(f"{SHARED_DB_URL}/api/v1/llm/config")
+        response = requests.get(f"{SHARED_DB_URL}/llm/config")
         if response.status_code == 200:
             config_data = response.json()
-            return LLMConfig(**config_data)
+            return LLMConfig(
+                provider=config_data.get("provider", "ollama"),
+                model=config_data.get("model", DEFAULT_MODEL),
+                temperature=config_data.get("temperature", 0.7),
+                max_tokens=config_data.get("max_tokens", 1000),
+                context_window=config_data.get("context_window", 4096),
+                api_key=config_data.get("api_key"),
+                base_url=config_data.get("base_url"),
+                additional_config=config_data.get("additional_config")
+            )
         else:
             logger.warning(f"Erro ao buscar config LLM: {response.status_code}")
             return LLMConfig()
@@ -62,51 +74,197 @@ def get_llm_config() -> LLMConfig:
         return LLMConfig()
 
 def call_ollama(message: str, config: LLMConfig) -> Dict[str, Any]:
-    """Chama o Ollama para gerar resposta"""
+    """Chama o provider correto baseado na configuração"""
     try:
-        payload = {
-            "model": config.model,
-            "prompt": message,
-            "stream": False,
-            "options": {
-                "temperature": config.temperature,
-                "num_predict": config.max_tokens
-            }
-        }
+        provider = config.provider.lower()
         
-        start_time = time.time()
-        response = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json=payload,
-            timeout=120
-        )
-        processing_time = time.time() - start_time
-        
-        if response.status_code == 200:
-            result = response.json()
-            return {
-                "success": True,
-                "response": result.get("response", ""),
-                "processing_time": processing_time,
-                "model": config.model,
-                "tokens_used": {
-                    "prompt": result.get("prompt_eval_count", 0),
-                    "completion": result.get("eval_count", 0)
-                }
-            }
+        if provider == "ollama":
+            return call_ollama_local(message, config)
         else:
-            logger.error(f"Erro Ollama: {response.status_code} - {response.text}")
-            return {
-                "success": False,
-                "error": f"Erro Ollama: {response.status_code}"
-            }
+            # Para todos os providers externos, usar LiteLLM
+            return call_external_via_litellm(message, config)
             
     except Exception as e:
-        logger.error(f"Erro ao chamar Ollama: {e}")
+        logger.error(f"Erro ao chamar LLM: {e}")
         return {
             "success": False,
             "error": str(e)
         }
+
+def call_ollama_local(message: str, config: LLMConfig) -> Dict[str, Any]:
+    """Chama modelo local do Ollama"""
+    try:
+        from openai import OpenAI
+        
+        client = OpenAI(
+            base_url=f"{OLLAMA_URL}/v1",
+            api_key="ollama"
+        )
+        
+        logger.info(f"Chamando modelo local Ollama: {config.model}")
+        
+        start_time = time.time()
+        response = client.chat.completions.create(
+            model=config.model,
+            messages=[{"role": "user", "content": message}],
+            temperature=config.temperature,
+            max_tokens=config.max_tokens
+        )
+        processing_time = time.time() - start_time
+        
+        return {
+            "success": True,
+            "response": response.choices[0].message.content,
+            "processing_time": processing_time,
+            "model": config.model,
+            "tokens_used": {
+                "prompt": response.usage.prompt_tokens,
+                "completion": response.usage.completion_tokens
+            }
+        }
+            
+    except Exception as e:
+        logger.error(f"Erro ao chamar Ollama local: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+def call_external_via_litellm(message: str, config: LLMConfig) -> Dict[str, Any]:
+    """Chama providers externos via LiteLLM"""
+    try:
+        from litellm import completion
+        
+        # Configurar variáveis de ambiente para LiteLLM
+        if config.provider == "openai":
+            # Usar variável de ambiente se config.api_key for None
+            if config.api_key:
+                os.environ["OPENAI_API_KEY"] = config.api_key
+            if config.base_url:
+                os.environ["OPENAI_API_BASE"] = config.base_url
+            model_name = "gpt-4o-mini"  # Modelo real, não o prefixo
+            
+        elif config.provider == "anthropic":
+            # Usar variável de ambiente se config.api_key for None
+            if config.api_key:
+                os.environ["ANTHROPIC_API_KEY"] = config.api_key
+            model_name = "claude-3-5-sonnet-20241022"
+            
+        elif config.provider == "google":
+            # Usar variável de ambiente se config.api_key for None
+            if config.api_key:
+                os.environ["GOOGLE_API_KEY"] = config.api_key
+            model_name = "gemini/gemini-2.5-flash-lite"
+            
+        elif config.provider == "deepseak":
+            # Usar variável de ambiente se config.api_key for None
+            if config.api_key:
+                os.environ["DEEPSEEK_API_KEY"] = config.api_key
+            if config.base_url:
+                os.environ["DEEPSEEK_API_BASE"] = config.base_url
+            model_name = "deepseek-chat"
+            
+        else:
+            return {
+                "success": False,
+                "error": f"Provider não suportado: {config.provider}"
+            }
+        
+        logger.info(f"Chamando {config.provider} via LiteLLM: {model_name}")
+        
+        start_time = time.time()
+        response = completion(
+            model=model_name,
+            messages=[{"role": "user", "content": message}],
+            temperature=config.temperature,
+            max_tokens=config.max_tokens
+        )
+        processing_time = time.time() - start_time
+        
+        return {
+            "success": True,
+            "response": response.choices[0].message.content,
+            "processing_time": processing_time,
+            "model": config.model,
+            "tokens_used": {
+                "prompt": response.usage.prompt_tokens,
+                "completion": response.usage.completion_tokens
+            }
+        }
+            
+    except Exception as e:
+        logger.error(f"Erro ao chamar {config.provider} via LiteLLM: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+async def ensure_model_exists(model_name: str, config: LLMConfig) -> bool:
+    """Garante que o modelo existe no Ollama, puxando se necessário"""
+    try:
+        # Verificar se o modelo já existe
+        response = requests.get(f"{OLLAMA_URL}/v1/models")
+        if response.status_code == 200:
+            models = response.json().get("data", [])
+            model_ids = [model["id"] for model in models]
+            
+            if model_name in model_ids:
+                logger.info(f"✅ Modelo {model_name} já existe")
+                return True
+        
+        # Modelo não existe, tentar puxar
+        logger.info(f"📥 Puxando modelo {model_name}...")
+        
+        if model_name.startswith("openai:"):
+            return await pull_openai_model(model_name, config)
+        elif model_name.startswith("anthropic:"):
+            return await pull_anthropic_model(model_name, config)
+        elif model_name.startswith("google:"):
+            return await pull_google_model(model_name, config)
+        elif model_name.startswith("azure:"):
+            return await pull_azure_model(model_name, config)
+        else:
+            logger.warning(f"Provider não suportado para pull: {model_name}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Erro ao verificar/preparar modelo: {e}")
+        return False
+
+async def pull_openai_model(model_name: str, config: LLMConfig) -> bool:
+    """Puxa modelo OpenAI para o Ollama"""
+    try:
+        if not config.api_key:
+            logger.error("API key OpenAI não configurada")
+            return False
+        
+        # Criar modelfile para OpenAI
+        modelfile_content = f"""
+FROM openai/gpt-4o-mini
+PARAMETER api_key {config.api_key}
+PARAMETER base_url {config.base_url or 'https://api.openai.com/v1'}
+"""
+        
+        # Criar modelo no Ollama
+        create_response = requests.post(
+            f"{OLLAMA_URL}/api/create",
+            json={
+                "name": model_name,
+                "modelfile": modelfile_content
+            },
+            timeout=60
+        )
+        
+        if create_response.status_code == 200:
+            logger.info(f"✅ Modelo OpenAI criado: {model_name}")
+            return True
+        else:
+            logger.error(f"❌ Falha ao criar modelo OpenAI: {create_response.status_code}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Erro ao puxar modelo OpenAI: {e}")
+        return False
 
 # ========= Endpoints da API =========
 @app.get("/health")
@@ -124,11 +282,27 @@ async def health_check():
         except:
             shared_db_status = "disconnected"
         
+        # Verificar configuração atual
+        try:
+            config = get_llm_config()
+            provider_info = {
+                "provider": config.provider,
+                "model": config.model,
+                "status": "configured"
+            }
+        except:
+            provider_info = {
+                "provider": "unknown",
+                "model": "unknown",
+                "status": "error"
+            }
+        
         return {
             "status": "healthy",
             "service": "llm-service",
             "ollama_status": ollama_status,
             "shared_db_status": shared_db_status,
+            "provider_info": provider_info,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
@@ -144,7 +318,7 @@ async def chat(request: ChatRequest):
     try:
         config = get_llm_config()
         
-        # Chamar Ollama
+        # Chamar Ollama (que decide internamente como rotear)
         result = call_ollama(request.message, config)
         
         if result["success"]:
@@ -180,7 +354,7 @@ async def get_config():
     """Obtém configurações atuais do LLM"""
     try:
         config = get_llm_config()
-        return config.dict()
+        return config.model_dump()
     except Exception as e:
         logger.error(f"Erro ao obter config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -208,14 +382,15 @@ async def startup_event():
         if response.status_code == 200:
             logger.info("✅ Ollama conectado com sucesso")
             
-            # Verificar se o modelo padrão está disponível
-            models = response.json().get("models", [])
-            model_names = [m["name"] for m in models]
-            
-            if DEFAULT_MODEL in model_names:
-                logger.info(f"✅ Modelo {DEFAULT_MODEL} disponível")
-            else:
-                logger.warning(f"⚠️ Modelo {DEFAULT_MODEL} não encontrado. Modelos disponíveis: {model_names}")
+            # Verificar configuração inicial
+            try:
+                config = get_llm_config()
+                logger.info(f"📋 Configuração carregada: {config.provider} - {config.model}")
+                logger.info("🎯 LLM Service pronto para rotear chamadas!")
+                    
+            except Exception as e:
+                logger.error(f"❌ Erro ao carregar configuração: {e}")
+                
         else:
             logger.error(f"❌ Ollama retornou status {response.status_code}")
     except Exception as e:

@@ -89,6 +89,10 @@ services:
       - OLLAMA_URL=http://ollama:11434
       - SHARED_DATABASE_URL=http://shared-database-api:8000
       - DEFAULT_MODEL=llama2:3b
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
     depends_on:
       - ollama
     healthcheck:

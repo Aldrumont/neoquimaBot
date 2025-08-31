@@ -47,6 +47,7 @@ class LLMConfig(Base):
             "id": self.id,
             "provider": self.provider,
             "model": self.model,
+            "api_key": self.api_key,
             "base_url": self.base_url,
             "temperature": self.temperature / 100.0 if self.temperature is not None else 0.7,  # Converte para float
             "max_tokens": self.max_tokens,

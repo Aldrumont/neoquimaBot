@@ -34,6 +34,8 @@ class LLMConfigResponse(LLMConfigBase):
     updated_at: Optional[datetime] = None
     created_by: Optional[str] = None
     additional_config: Optional[Dict[str, Any]] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
 
     class Config:
         from_attributes = True
