@@ -29,6 +29,9 @@ async function loadDashboardData() {
         // Load system health
         await loadSystemHealth();
         
+        // Load LLM status
+        await loadLLMStatus();
+        
         // Load recent activity
         await loadRecentActivity();
         
@@ -84,6 +87,42 @@ function updateApiStatus(apiData) {
         } else {
             apiStatusElement.textContent = 'ERRO';
             apiStatusElement.className = 'text-danger';
+        }
+    }
+}
+
+// Load LLM status
+async function loadLLMStatus() {
+    try {
+        const response = await fetch('/api/llm/health');
+        if (response.ok) {
+            const llmData = await response.json();
+            updateLLMStatus(llmData);
+        } else {
+            updateLLMStatus({ status: 'error' });
+        }
+    } catch (error) {
+        console.error('Error loading LLM status:', error);
+        updateLLMStatus({ status: 'error' });
+    }
+}
+
+// Update LLM status
+function updateLLMStatus(llmData) {
+    const llmStatusElement = document.getElementById('llmStatus');
+    if (llmStatusElement) {
+        if (llmData.status === 'healthy') {
+            const providerHealth = llmData.provider_health;
+            if (providerHealth && providerHealth.provider) {
+                llmStatusElement.textContent = providerHealth.provider.toUpperCase();
+                llmStatusElement.className = 'text-success';
+            } else {
+                llmStatusElement.textContent = 'OK';
+                llmStatusElement.className = 'text-success';
+            }
+        } else {
+            llmStatusElement.textContent = 'ERRO';
+            llmStatusElement.className = 'text-danger';
         }
     }
 }

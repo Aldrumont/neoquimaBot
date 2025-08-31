@@ -1,0 +1,161 @@
+{
+  "providers": {
+    "ollama": {
+      "name": "Ollama (Local)",
+      "description": "Provider local sem custos, sem limites de API",
+      "config": {
+        "provider": "ollama",
+        "model": "llama2:3b",
+        "base_url": "http://ollama:11434",
+        "temperature": 0.7,
+        "max_tokens": 1000,
+        "context_window": 4096,
+        "rag_enabled": true,
+        "default_rag_collection": "neoquima"
+      },
+      "requirements": "Docker com Ollama rodando",
+      "costs": "Gratuito",
+      "best_for": "Desenvolvimento, testes, uso local"
+    },
+    
+    "openai": {
+      "name": "OpenAI",
+      "description": "Provider da OpenAI com modelos GPT de alta qualidade",
+      "config": {
+        "provider": "openai",
+        "model": "gpt-3.5-turbo",
+        "api_key": "sk-...sua-api-key-aqui...",
+        "base_url": "https://api.openai.com/v1",
+        "temperature": 0.7,
+        "max_tokens": 1000,
+        "context_window": 4096,
+        "rag_enabled": true,
+        "default_rag_collection": "neoquima"
+      },
+      "requirements": "API Key da OpenAI",
+      "costs": "Por token usado",
+      "best_for": "Produção, alta qualidade, estabilidade"
+    },
+    
+    "anthropic": {
+      "name": "Anthropic (Claude)",
+      "description": "Provider da Anthropic com Claude, excelente para conversas",
+      "config": {
+        "provider": "anthropic",
+        "model": "claude-3-sonnet-20240229",
+        "api_key": "sk-ant-...sua-api-key-aqui...",
+        "base_url": "https://api.anthropic.com/v1",
+        "temperature": 0.7,
+        "max_tokens": 1000,
+        "context_window": 4096,
+        "rag_enabled": true,
+        "default_rag_collection": "neoquima"
+      },
+      "requirements": "API Key da Anthropic",
+      "costs": "Por token usado",
+      "best_for": "Conversas naturais, ética, qualidade"
+    },
+    
+    "google": {
+      "name": "Google (Gemini)",
+      "description": "Provider do Google com modelos Gemini",
+      "config": {
+        "provider": "google",
+        "model": "gemini-1.5-flash",
+        "api_key": "AIza...sua-api-key-aqui...",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+        "temperature": 0.7,
+        "max_tokens": 1000,
+        "context_window": 4096,
+        "rag_enabled": true,
+        "default_rag_collection": "neoquima"
+      },
+      "requirements": "API Key do Google",
+      "costs": "Por token usado",
+      "best_for": "Integração Google, boa performance"
+    },
+    
+    "azure_openai": {
+      "name": "Azure OpenAI",
+      "description": "OpenAI via Azure para empresas",
+      "config": {
+        "provider": "azure_openai",
+        "model": "gpt-4",
+        "api_key": "sua-api-key-azure-aqui",
+        "base_url": "https://sua-instancia.openai.azure.com",
+        "api_version": "2024-02-15-preview",
+        "temperature": 0.7,
+        "max_tokens": 1000,
+        "context_window": 4096,
+        "rag_enabled": true,
+        "default_rag_collection": "neoquima"
+      },
+      "requirements": "API Key do Azure + URL do deployment",
+      "costs": "Por token usado (via Azure)",
+      "best_for": "Empresas, compliance, Azure"
+    }
+  },
+  
+  "quick_switch": {
+    "ollama_local": {
+      "description": "Trocar para Ollama local (gratuito)",
+      "command": "python scripts/configure_llm.py",
+      "steps": [
+        "Execute o script",
+        "Escolha opção 1 (Ollama)",
+        "Configure modelo e URL",
+        "Confirme e salve"
+      ]
+    },
+    
+    "openai_production": {
+      "description": "Trocar para OpenAI (produção)",
+      "command": "python scripts/configure_llm.py",
+      "steps": [
+        "Execute o script",
+        "Escolha opção 2 (OpenAI)",
+        "Digite sua API Key",
+        "Configure modelo e parâmetros",
+        "Confirme e salve"
+      ]
+    },
+    
+    "claude_conversations": {
+      "description": "Trocar para Claude (conversas)",
+      "command": "python scripts/configure_llm.py",
+      "steps": [
+        "Execute o script",
+        "Escolha opção 3 (Anthropic)",
+        "Digite sua API Key",
+        "Configure modelo e parâmetros",
+        "Confirme e salve"
+      ]
+    }
+  },
+  
+  "testing": {
+    "test_providers": {
+      "description": "Testar funcionamento dos providers",
+      "command": "python scripts/test_llm_providers.py"
+    },
+    
+    "test_chat": {
+      "description": "Testar endpoint de chat",
+      "command": "curl -X POST http://localhost:8003/api/chat -H 'Content-Type: application/json' -d '{\"message\":\"Teste\",\"user_id\":\"test\"}'"
+    },
+    
+    "health_check": {
+      "description": "Verificar saúde do serviço",
+      "command": "curl http://localhost:8003/health"
+    }
+  },
+  
+  "troubleshooting": {
+    "common_issues": {
+      "provider_not_found": "Verificar se o provider está na lista: curl http://localhost:8003/api/providers",
+      "api_key_invalid": "Validar configuração: curl -X POST http://localhost:8003/api/providers/validate -H 'Content-Type: application/json' -d '{\"provider\":\"openai\",\"api_key\":\"sua-key\"}'",
+      "service_not_responding": "Verificar se está rodando: docker ps | grep llm-service",
+      "database_error": "Verificar logs: docker logs shared-database-api"
+    }
+  }
+} 

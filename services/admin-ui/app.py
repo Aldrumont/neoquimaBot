@@ -8,6 +8,7 @@ app.secret_key = os.getenv('SECRET_KEY', 'admin-secret-key-2024')
 
 # Configurações
 SHARED_API_URL = os.getenv('SHARED_DATABASE_URL', 'http://shared-database-api:8000')
+LLM_API_URL = os.getenv('LLM_SERVICE_URL', 'http://llm-service:8003')
 API_BASE_URL = f"{SHARED_API_URL}/api/v1/whatsapp"
 
 @app.route('/')
@@ -19,6 +20,13 @@ def index():
 def users():
     """Página de gerenciamento de usuários"""
     return render_template('users.html')
+
+@app.route('/llm')
+def llm_config():
+    """Página de configuração de LLM"""
+    return render_template('llm.html')
+
+# ========= ROTAS DE USUÁRIOS =========
 
 @app.route('/api/users')
 def get_users():
@@ -78,6 +86,144 @@ def delete_user(user_id):
     except Exception as e:
         return jsonify({"error": f"Erro de conexão: {str(e)}"}), 500
 
+# ========= ROTAS DE LLM =========
+
+@app.route('/api/llm/providers')
+def get_llm_providers():
+    """API para listar providers LLM disponíveis"""
+    try:
+        response = requests.get(f"{LLM_API_URL}/api/providers")
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": "Erro ao buscar providers"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Erro de conexão: {str(e)}"}), 500
+
+@app.route('/api/llm/config')
+def get_llm_config():
+    """API para obter configuração atual do LLM"""
+    try:
+        response = requests.get(f"{LLM_API_URL}/api/config")
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": "Erro ao buscar configuração"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Erro de conexão: {str(e)}"}), 500
+
+@app.route('/api/llm/config', methods=['PUT'])
+def update_llm_config():
+    """API para atualizar configuração do LLM"""
+    try:
+        config_data = request.json
+        
+        # Validar configuração antes de salvar
+        validation_response = requests.post(
+            f"{LLM_API_URL}/api/providers/validate",
+            json=config_data
+        )
+        
+        if validation_response.status_code == 200:
+            validation_result = validation_response.json()
+            if not validation_result.get("validation", {}).get("valid", False):
+                return jsonify({
+                    "error": "Configuração inválida",
+                    "details": validation_result.get("validation", {}).get("errors", [])
+                }), 400
+        
+        # Salvar no banco compartilhado
+        response = requests.put(f"{SHARED_API_URL}/api/v1/llm/config", json=config_data)
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify(response.json()), response.status_code
+    except Exception as e:
+        return jsonify({"error": f"Erro de conexão: {str(e)}"}), 500
+
+@app.route('/api/llm/health')
+def get_llm_health():
+    """API para verificar saúde do LLM Service"""
+    try:
+        response = requests.get(f"{LLM_API_URL}/health")
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": "Erro ao verificar saúde"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Erro de conexão: {str(e)}"}), 500
+
+@app.route('/api/llm/test', methods=['POST'])
+def test_llm_config():
+    """Testa configuração do LLM"""
+    try:
+        data = request.get_json()
+        config = data.get('config', {})
+        
+        # Fazer teste via LLM Service
+        test_response = requests.post(
+            f"{LLM_API_URL}/api/providers/validate",
+            json=config,
+            timeout=30
+        )
+        
+        if test_response.status_code == 200:
+            return jsonify({
+                'success': True,
+                'message': 'Configuração válida!',
+                'details': test_response.json()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Erro na validação',
+                'details': test_response.json() if test_response.content else 'Erro desconhecido'
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao testar: {str(e)}'
+        }), 500
+
+@app.route('/api/llm/models/local')
+def get_local_models():
+    """Obtém modelos disponíveis localmente no Ollama"""
+    try:
+        response = requests.get(f"{LLM_API_URL}/api/models/local", timeout=10)
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({'error': 'Erro ao buscar modelos locais'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Erro: {str(e)}'}), 500
+
+@app.route('/api/llm/models/api/<provider>')
+def get_api_models(provider):
+    """Obtém modelos disponíveis para um provider de API"""
+    try:
+        response = requests.get(f"{LLM_API_URL}/api/models/api/{provider}", timeout=10)
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({'error': f'Erro ao buscar modelos da API {provider}'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Erro: {str(e)}'}), 500
+
+@app.route('/api/llm/models/all')
+def get_all_models():
+    """Obtém todos os modelos disponíveis"""
+    try:
+        response = requests.get(f"{LLM_API_URL}/api/models/all", timeout=10)
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({'error': 'Erro ao buscar todos os modelos'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Erro: {str(e)}'}), 500
+
+# ========= ROTAS DE SISTEMA =========
+
 @app.route('/health')
 def health():
     """Health check"""
@@ -85,7 +231,8 @@ def health():
         "status": "healthy",
         "service": "admin-ui",
         "timestamp": datetime.now().isoformat(),
-        "shared_api_url": SHARED_API_URL
+        "shared_api_url": SHARED_API_URL,
+        "llm_api_url": LLM_API_URL
     })
 
 @app.route('/api/ngrok-status')
@@ -99,59 +246,29 @@ def ngrok_status():
         try:
             response = requests.get("http://whatsapp-gateway:8000/health", timeout=2)
             if response.status_code == 200:
-                whatsapp_status = "🟢 Online"
+                return jsonify({
+                    "status": "connected",
+                    "service": "whatsapp-gateway",
+                    "message": "WhatsApp Gateway está funcionando"
+                })
             else:
-                whatsapp_status = "🟡 Erro"
-        except:
-            whatsapp_status = "🔴 Offline"
-        
-        # Status dos serviços
-        services_status = {
-            "shared_database": "🟢 Online",
-            "whatsapp_gateway": whatsapp_status,
-            "local_addr": "http://whatsapp-gateway:8000",
-            "proto": "https",
-            "note": "Status inferido via gateway"
-        }
-        
-        return jsonify(services_status)
-        
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
-
-@app.route('/api/stats/messages-today')
-def messages_today():
-    """Conta mensagens/interações de hoje"""
-    try:
-        # Buscar usuários e contar interações
-        response = requests.get(f"{API_BASE_URL}/users")
-        if response.ok:
-            data = response.json()
-            users = data.get('users', [])
-            
-            # Contar interações de hoje
-            today = datetime.now().date()
-            today_messages = 0
-            
-            for user in users:
-                if user.get('last_interact'):
-                    try:
-                        last_interact = datetime.fromisoformat(user['last_interact'].replace('Z', '+00:00'))
-                        if last_interact.date() == today:
-                            today_messages += user.get('interact_count', 0)
-                    except:
-                        continue
-            
+                return jsonify({
+                    "status": "error",
+                    "service": "whatsapp-gateway",
+                    "message": f"Status HTTP: {response.status_code}"
+                })
+        except requests.exceptions.RequestException:
             return jsonify({
-                "today_messages": today_messages,
-                "total_users": len(users),
-                "active_users": len([u for u in users if u.get('active')])
+                "status": "disconnected",
+                "service": "whatsapp-gateway",
+                "message": "WhatsApp Gateway não está respondendo"
             })
-        else:
-            return jsonify({"today_messages": 0, "error": "Failed to fetch users"})
             
     except Exception as e:
-        return jsonify({"today_messages": 0, "error": str(e)})
+        return jsonify({
+            "status": "error",
+            "message": f"Erro ao verificar status: {str(e)}"
+        })
 
 if __name__ == '__main__':
     port = int(os.getenv('ADMIN_UI_PORT', 8080))

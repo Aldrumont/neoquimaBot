@@ -11,6 +11,10 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 import logging
 
+# Importar o novo sistema de providers
+from providers.factory import LLMProviderFactory
+from providers.base import LLMResponse
+
 # Configuração de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,13 +22,10 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Neoquima LLM Service", version="1.0.0")
 
 # Configurações
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
 SHARED_DB_URL = os.getenv("SHARED_DATABASE_URL", "http://shared-database-api:8000")
-DEFAULT_MODEL = "qwen2.5:3b-instruct-q4_K_M"
 
 # Templates e arquivos estáticos
 templates = Jinja2Templates(directory="templates")
-# app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ========= Modelos Pydantic =========
 class ChatRequest(BaseModel):
@@ -36,87 +37,143 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     model: str
+    provider: str
     processing_time: float
     tokens_used: Optional[Dict[str, int]] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 class LLMConfig(BaseModel):
     provider: str = "ollama"
-    model: str = DEFAULT_MODEL
+    model: str = "llama2:3b"
     temperature: float = 0.7
     max_tokens: int = 1000
     context_window: int = 4096
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    additional_config: Optional[Dict[str, Any]] = None
+
+class ProviderInfo(BaseModel):
+    name: str
+    description: str
+    requires_api_key: bool
+    supports_local: bool
+    config_fields: Dict[str, Any]
 
 # ========= Funções auxiliares =========
+def get_ollama_models() -> list:
+    """Obtém lista de modelos disponíveis no Ollama"""
+    try:
+        ollama_url = os.getenv("OLLAMA_URL", "http://ollama:11434")
+        response = requests.get(f"{ollama_url}/api/tags", timeout=10)
+        if response.status_code == 200:
+            models_data = response.json()
+            return [model["name"] for model in models_data.get("models", [])]
+        else:
+            logger.warning(f"Erro ao buscar modelos Ollama: {response.status_code}")
+            return []
+    except Exception as e:
+        logger.error(f"Erro ao conectar com Ollama: {e}")
+        return []
+
+def get_available_api_models() -> dict:
+    """Retorna lista de modelos disponíveis para cada provider de API"""
+    return {
+        "openai": [
+            "gpt-4o",
+            "gpt-4o-mini", 
+            "gpt-4-turbo",
+            "gpt-4",
+            "gpt-3.5-turbo",
+            "gpt-3.5-turbo-16k"
+        ],
+        "anthropic": [
+            "claude-3.5-sonnet",
+            "claude-3.5-haiku",
+            "claude-3-opus",
+            "claude-3-sonnet",
+            "claude-3-haiku"
+        ],
+        "google": [
+            "gemini-1.5-pro",
+            "gemini-1.5-flash",
+            "gemini-1.0-pro",
+            "gemini-1.0-pro-vision"
+        ],
+        "azure_openai": [
+            "gpt-4",
+            "gpt-4-turbo",
+            "gpt-3.5-turbo",
+            "gpt-3.5-turbo-16k"
+        ]
+    }
+
 def get_llm_config() -> LLMConfig:
     """Obtém configurações do LLM do banco compartilhado"""
     try:
-        response = requests.get(f"{SHARED_DB_URL}/api/v1/llm/config")
+        response = requests.get(f"{SHARED_DB_URL}/llm/config")
         if response.status_code == 200:
             config_data = response.json()
-            return LLMConfig(**config_data)
+            # Mapear campos do banco para o modelo local
+            return LLMConfig(
+                provider=config_data.get("provider", "ollama"),
+                model=config_data.get("model", "qwen2.5:3b-instruct-q4_K_M"),
+                temperature=config_data.get("temperature", 0.7) / 100.0,  # Converter de centésimos
+                max_tokens=config_data.get("max_tokens", 1000),
+                context_window=config_data.get("context_window", 4096),
+                api_key=config_data.get("api_key"),
+                base_url=config_data.get("base_url")
+            )
         else:
             logger.warning(f"Erro ao buscar config LLM: {response.status_code}")
-            return LLMConfig()
+            # Retornar configuração padrão baseada no que está no banco
+            return LLMConfig(
+                provider="ollama",
+                model="qwen2.5:3b-instruct-q4_K_M",
+                temperature=0.7,
+                max_tokens=1000,
+                context_window=4096
+            )
     except Exception as e:
         logger.error(f"Erro ao conectar com shared-db: {e}")
-        return LLMConfig()
-
-def call_ollama(message: str, config: LLMConfig) -> Dict[str, Any]:
-    """Chama o Ollama para gerar resposta"""
-    try:
-        payload = {
-            "model": config.model,
-            "prompt": message,
-            "stream": False,
-            "options": {
-                "temperature": config.temperature,
-                "num_predict": config.max_tokens
-            }
-        }
-        
-        start_time = time.time()
-        response = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json=payload,
-            timeout=120
+        # Retornar configuração padrão baseada no que está no banco
+        return LLMConfig(
+            provider="ollama",
+            model="qwen2.5:3b-instruct-q4_K_M",
+            temperature=0.7,
+            max_tokens=1000,
+            context_window=4096
         )
-        processing_time = time.time() - start_time
+
+async def generate_llm_response(message: str, config: LLMConfig) -> LLMResponse:
+    """Gera resposta usando o provider configurado"""
+    try:
+        # Converter configuração para dict
+        config_dict = config.model_dump()
         
-        if response.status_code == 200:
-            result = response.json()
-            return {
-                "success": True,
-                "response": result.get("response", ""),
-                "processing_time": processing_time,
-                "model": config.model,
-                "tokens_used": {
-                    "prompt": result.get("prompt_eval_count", 0),
-                    "completion": result.get("eval_count", 0)
-                }
-            }
-        else:
-            logger.error(f"Erro Ollama: {response.status_code} - {response.text}")
-            return {
-                "success": False,
-                "error": f"Erro Ollama: {response.status_code}"
-            }
-            
+        # Criar provider usando factory
+        provider = LLMProviderFactory.create_provider(config_dict)
+        
+        # Gerar resposta
+        response = await provider.generate_response(message)
+        return response
+        
     except Exception as e:
-        logger.error(f"Erro ao chamar Ollama: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        logger.error(f"Erro ao gerar resposta LLM: {e}")
+        # Retornar resposta de erro padronizada
+        return LLMResponse(
+            success=False,
+            response="",
+            model=config.model,
+            provider=config.provider,
+            processing_time=0.0,
+            error=str(e)
+        )
 
 # ========= Endpoints da API =========
 @app.get("/health")
 async def health_check():
     """Health check do serviço"""
     try:
-        # Verificar Ollama
-        ollama_response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
-        ollama_status = "connected" if ollama_response.status_code == 200 else "disconnected"
-        
         # Verificar shared-db
         shared_db_status = "connected"
         try:
@@ -124,11 +181,23 @@ async def health_check():
         except:
             shared_db_status = "disconnected"
         
+        # Verificar provider ativo
+        try:
+            config = get_llm_config()
+            provider = LLMProviderFactory.create_provider(config.model_dump())
+            provider_health = await provider.health_check()
+        except Exception as e:
+            provider_health = {
+                "status": "unhealthy",
+                "provider": config.provider if 'config' in locals() else "unknown",
+                "error": str(e)
+            }
+        
         return {
             "status": "healthy",
             "service": "llm-service",
-            "ollama_status": ollama_status,
             "shared_db_status": shared_db_status,
+            "provider_health": provider_health,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
@@ -144,35 +213,74 @@ async def chat(request: ChatRequest):
     try:
         config = get_llm_config()
         
-        # Chamar Ollama
-        result = call_ollama(request.message, config)
+        # Sobrescrever configurações se fornecidas na request
+        if request.temperature is not None:
+            config.temperature = request.temperature
+        if request.max_tokens is not None:
+            config.max_tokens = request.max_tokens
         
-        if result["success"]:
+        # Gerar resposta usando provider configurado
+        llm_response = await generate_llm_response(request.message, config)
+        
+        if llm_response.success:
             return ChatResponse(
-                response=result["response"],
-                model=result["model"],
-                processing_time=result["processing_time"],
-                tokens_used=result.get("tokens_used")
+                response=llm_response.response,
+                model=llm_response.model,
+                provider=llm_response.provider,
+                processing_time=llm_response.processing_time,
+                tokens_used=llm_response.tokens_used,
+                metadata=llm_response.metadata
             )
         else:
-            raise HTTPException(status_code=500, detail=result["error"])
+            raise HTTPException(status_code=500, detail=llm_response.error)
             
     except Exception as e:
         logger.error(f"Erro no chat: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/models")
-async def list_models():
-    """Lista modelos disponíveis no Ollama"""
+@app.get("/api/providers")
+async def list_providers():
+    """Lista todos os providers suportados"""
     try:
-        response = requests.get(f"{OLLAMA_URL}/api/tags")
-        if response.status_code == 200:
-            models = response.json().get("models", [])
-            return {"models": models}
-        else:
-            raise HTTPException(status_code=500, detail="Erro ao listar modelos")
+        providers = LLMProviderFactory.get_supported_providers()
+        return {
+            "providers": providers,
+            "total": len(providers),
+            "timestamp": datetime.now().isoformat()
+        }
     except Exception as e:
-        logger.error(f"Erro ao listar modelos: {e}")
+        logger.error(f"Erro ao listar providers: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/providers/{provider_name}")
+async def get_provider_info(provider_name: str):
+    """Informações detalhadas sobre um provider específico"""
+    try:
+        providers = LLMProviderFactory.get_supported_providers()
+        if provider_name not in providers:
+            raise HTTPException(status_code=404, detail=f"Provider '{provider_name}' não encontrado")
+        
+        return {
+            "provider": providers[provider_name],
+            "timestamp": datetime.now().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao obter info do provider: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/providers/validate")
+async def validate_provider_config(config: LLMConfig):
+    """Valida configuração de um provider"""
+    try:
+        validation_result = LLMProviderFactory.validate_config(config.model_dump())
+        return {
+            "validation": validation_result,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Erro ao validar config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/config")
@@ -180,9 +288,65 @@ async def get_config():
     """Obtém configurações atuais do LLM"""
     try:
         config = get_llm_config()
-        return config.dict()
+        return config.model_dump()
     except Exception as e:
         logger.error(f"Erro ao obter config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/models/local")
+async def get_local_models():
+    """Lista modelos disponíveis localmente no Ollama"""
+    try:
+        models = get_ollama_models()
+        return {
+            "provider": "ollama",
+            "models": models,
+            "total": len(models),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Erro ao listar modelos locais: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/models/api/{provider}")
+async def get_api_models(provider: str):
+    """Lista modelos disponíveis para um provider de API específico"""
+    try:
+        api_models = get_available_api_models()
+        if provider not in api_models:
+            raise HTTPException(status_code=404, detail=f"Provider '{provider}' não suportado")
+        
+        models = api_models[provider]
+        return {
+            "provider": provider,
+            "models": models,
+            "total": len(models),
+            "timestamp": datetime.now().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao listar modelos da API {provider}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/models/all")
+async def get_all_models():
+    """Lista todos os modelos disponíveis (locais e APIs)"""
+    try:
+        local_models = get_ollama_models()
+        api_models = get_available_api_models()
+        
+        return {
+            "local": {
+                "provider": "ollama",
+                "models": local_models,
+                "total": len(local_models)
+            },
+            "api": api_models,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Erro ao listar todos os modelos: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ========= Interface Web =========
@@ -199,30 +363,28 @@ async def admin_interface(request: Request):
 # ========= Inicialização =========
 @app.on_event("startup")
 async def startup_event():
-    """Evento executado na inicialização"""
-    logger.info("🚀 LLM Service iniciando...")
-    
-    # Verificar se o Ollama está rodando
+    """Evento executado na inicialização da aplicação"""
     try:
-        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=10)
-        if response.status_code == 200:
-            logger.info("✅ Ollama conectado com sucesso")
-            
-            # Verificar se o modelo padrão está disponível
-            models = response.json().get("models", [])
-            model_names = [m["name"] for m in models]
-            
-            if DEFAULT_MODEL in model_names:
-                logger.info(f"✅ Modelo {DEFAULT_MODEL} disponível")
-            else:
-                logger.warning(f"⚠️ Modelo {DEFAULT_MODEL} não encontrado. Modelos disponíveis: {model_names}")
+        logger.info("🚀 LLM Service iniciando...")
+        
+        # Verificar configuração inicial
+        config = get_llm_config()
+        logger.info(f"✅ Configuração carregada: {config.provider} - {config.model}")
+        
+        # Validar provider
+        validation = LLMProviderFactory.validate_config(config.model_dump())
+        if validation["valid"]:
+            logger.info(f"✅ Provider '{config.provider}' configurado corretamente")
         else:
-            logger.error(f"❌ Ollama retornou status {response.status_code}")
+            logger.warning(f"⚠️ Provider '{config.provider}' com problemas: {validation['errors']}")
+        
+        logger.info("🚀 LLM Service iniciado com sucesso!")
+        
     except Exception as e:
-        logger.error(f"❌ Erro ao conectar com Ollama: {e}")
-    
-    logger.info("🎯 LLM Service pronto!")
+        logger.error(f"❌ Erro na inicialização: {e}")
+        raise
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8003) 
+    port = int(os.getenv("LLM_SERVICE_PORT", 8003))
+    uvicorn.run(app, host="0.0.0.0", port=port) 

@@ -36,8 +36,8 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link disabled" href="#">
-                            <i class="bi bi-robot"></i> LLM (Em breve)
+                        <a class="nav-link" href="/llm">
+                            <i class="bi bi-robot"></i> LLM
                         </a>
                     </li>
                     <li class="nav-item">
@@ -111,6 +111,16 @@
                     </div>
                 </div>
             </div>
+            <div class="col-md-3 mb-3">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body text-center">
+                        <i class="bi bi-robot text-warning display-6"></i>
+                        <h5 class="card-title mt-2">LLM Status</h5>
+                        <h2 class="text-warning" id="llmStatus">-</h2>
+                        <small class="text-muted">Provider Ativo</small>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Quick Actions -->
@@ -129,10 +139,10 @@
                                 <i class="bi bi-person-plus"></i>
                                 Gerenciar Usuários
                             </a>
-                            <button class="btn btn-outline-secondary disabled">
+                            <a href="/llm" class="btn btn-outline-primary">
                                 <i class="bi bi-robot"></i>
-                                Configurar LLM (Em breve)
-                            </button>
+                                Configurar LLM
+                            </a>
                             <button class="btn btn-outline-secondary disabled">
                                 <i class="bi bi-graph-up"></i>
                                 Ver Analytics (Em breve)
