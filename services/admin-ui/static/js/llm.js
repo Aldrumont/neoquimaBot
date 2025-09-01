@@ -1,30 +1,30 @@
 // LLM Configuration and Testing JavaScript
 
-// Modelos disponíveis para cada provider
+// Modelos disponíveis para cada provider com suas escalas de temperatura
 const PROVIDER_MODELS = {
     'ollama': [
-        { value: 'qwen2.5:3b-instruct-q4_K_M', label: 'Qwen 2.5 3B (Instruct)' },
-        { value: 'tinyllama:latest', label: 'TinyLlama' }
+        { value: 'qwen2.5:3b-instruct-q4_K_M', label: 'Qwen 2.5 3B (Instruct)', tempRange: [0.0, 2.0] },
+        { value: 'tinyllama:latest', label: 'TinyLlama', tempRange: [0.0, 2.0] }
     ],
     'openai': [
-        { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-        { value: 'gpt-4o', label: 'GPT-4o' },
-        { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' }
+        { value: 'gpt-4o-mini', label: 'GPT-4o Mini', tempRange: [0.0, 2.0] },
+        { value: 'gpt-4o', label: 'GPT-4o', tempRange: [0.0, 2.0] },
+        { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', tempRange: [0.0, 2.0] }
     ],
     'google': [
-        { value: 'gemini/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
-        { value: 'gemini/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-        { value: 'gemini/gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash Exp' },
-        { value: 'gemini/gemini-1.5-flash', label: 'Gemini 1.5 Flash' }
+        { value: 'gemini/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', tempRange: [0.0, 1.0] },
+        { value: 'gemini/gemini-2.5-flash', label: 'Gemini 2.5 Flash', tempRange: [0.0, 1.0] },
+        { value: 'gemini/gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash Exp', tempRange: [0.0, 1.0] },
+        { value: 'gemini/gemini-1.5-flash', label: 'Gemini 1.5 Flash', tempRange: [0.0, 1.0] }
     ],
     'anthropic': [
-        { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-        { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
-        { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' }
+        { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', tempRange: [0.0, 1.0] },
+        { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku', tempRange: [0.0, 1.0] },
+        { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus', tempRange: [0.0, 1.0] }
     ],
     'deepseek': [
-        { value: 'deepseek-chat', label: 'DeepSeek Chat' },
-        { value: 'deepseek-coder', label: 'DeepSeek Coder' }
+        { value: 'deepseek-chat', label: 'DeepSeek Chat', tempRange: [0.0, 2.0] },
+        { value: 'deepseek-coder', label: 'DeepSeek Coder', tempRange: [0.0, 2.0] }
     ]
 };
 
@@ -46,9 +46,16 @@ function initializePage() {
 
 function setupEventListeners() {
     // Provider change
-    document.getElementById('provider').addEventListener('change', function() {
-        updateModelOptions(this.value);
+    document.getElementById('provider').addEventListener('change', async function() {
+        await updateModelOptions(this.value);
     });
+    
+    // Model change
+    document.getElementById('model').addEventListener('change', function() {
+        updateTemperatureRange(this.value);
+    });
+    
+    // Form de configuração
     
     // Form de configuração
     document.getElementById('llmConfigForm').addEventListener('submit', function(e) {
@@ -72,7 +79,7 @@ function setupTemperatureSlider() {
     });
 }
 
-function updateModelOptions(provider) {
+async function updateModelOptions(provider) {
     const modelSelect = document.getElementById('model');
     modelSelect.innerHTML = '<option value="">Selecione um modelo</option>';
     
@@ -81,12 +88,99 @@ function updateModelOptions(provider) {
             const option = document.createElement('option');
             option.value = model.value;
             option.textContent = model.label;
+            option.dataset.tempRange = JSON.stringify(model.tempRange);
             modelSelect.appendChild(option);
         });
     }
     
     // Gerenciar campos de API key
     updateApiKeyFields(provider);
+    
+    // Carregar API key salva para este provider se existir
+    await loadApiKeyForProvider(provider);
+}
+
+async function loadApiKeyForProvider(provider) {
+    try {
+        // Buscar todas as configurações para encontrar uma com API key para este provider
+        const response = await fetch('/api/llm/configs');
+        if (response.ok) {
+            const configs = await response.json();
+            
+            // Procurar por uma configuração com API key para o provider selecionado
+            const configWithApiKey = configs.find(config => 
+                config.provider === provider && config.api_key
+            );
+            
+            if (configWithApiKey && configWithApiKey.api_key) {
+                // Preencher o campo de API key correspondente
+                if (provider === 'openai') {
+                    document.getElementById('openaiApiKey').value = configWithApiKey.api_key;
+                } else if (provider === 'google') {
+                    document.getElementById('googleApiKey').value = configWithApiKey.api_key;
+                } else if (provider === 'anthropic') {
+                    document.getElementById('anthropicApiKey').value = configWithApiKey.api_key;
+                } else if (provider === 'deepseek') {
+                    document.getElementById('deepseekApiKey').value = configWithApiKey.api_key;
+                }
+                
+                console.log(`API key carregada automaticamente para ${provider}`);
+            } else {
+                // Limpar o campo se não houver API key salva
+                if (provider === 'openai') {
+                    document.getElementById('openaiApiKey').value = '';
+                } else if (provider === 'google') {
+                    document.getElementById('googleApiKey').value = '';
+                } else if (provider === 'anthropic') {
+                    document.getElementById('anthropicApiKey').value = '';
+                } else if (provider === 'deepseek') {
+                    document.getElementById('deepseekApiKey').value = '';
+                }
+            }
+        }
+    } catch (error) {
+        console.log('Erro ao carregar API key:', error);
+    }
+}
+
+function updateTemperatureRange(modelValue) {
+    const provider = document.getElementById('provider').value;
+    if (!provider || !modelValue) return;
+    
+    // Encontrar o modelo selecionado
+    const model = PROVIDER_MODELS[provider]?.find(m => m.value === modelValue);
+    if (!model || !model.tempRange) return;
+    
+    const [minTemp, maxTemp] = model.tempRange;
+    const tempSlider = document.getElementById('temperature');
+    const tempValue = document.getElementById('tempValue');
+    
+    // Ajustar range do slider
+    tempSlider.min = minTemp;
+    tempSlider.max = maxTemp;
+    tempSlider.step = 0.1;
+    
+    // Ajustar valor atual se estiver fora do range
+    const currentValue = parseFloat(tempSlider.value);
+    if (currentValue < minTemp || currentValue > maxTemp) {
+        tempSlider.value = (minTemp + maxTemp) / 2; // Valor médio
+        tempValue.textContent = tempSlider.value;
+    }
+    
+    // Atualizar display do valor
+    tempValue.textContent = tempSlider.value;
+    
+    // Adicionar tooltip ou informação sobre o range
+    const tempContainer = tempSlider.closest('.mb-3');
+    let rangeInfo = tempContainer.querySelector('.temp-range-info');
+    if (!rangeInfo) {
+        rangeInfo = document.createElement('small');
+        rangeInfo.className = 'text-muted temp-range-info';
+        tempContainer.appendChild(rangeInfo);
+    }
+    rangeInfo.textContent = `Range: ${minTemp} - ${maxTemp}`;
+    
+    console.log(`Temperatura ajustada para modelo ${modelValue}: ${minTemp} - ${maxTemp}`);
 }
 
 function updateApiKeyFields(provider) {
@@ -213,6 +307,8 @@ function populateFormWithConfig(config) {
     setTimeout(() => {
         const modelSelect = document.getElementById('model');
         modelSelect.value = config.model;
+        // Ajustar range de temperatura para o modelo selecionado
+        updateTemperatureRange(config.model);
     }, 100);
     
     // Configurar outros campos

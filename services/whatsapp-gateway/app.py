@@ -16,7 +16,7 @@ from database.models import User
 from shared_database_service import SharedDatabaseService
 
 # Importação do serviço WhatsApp
-from whatsapp_service import whatsapp_service
+from whatsapp_service import initialize_whatsapp_service
 
 # Importação do ConversationHandler
 from conversation_handler import ConversationHandler
@@ -47,6 +47,9 @@ log = logging.getLogger("uvicorn.error")
 
 # Instância do serviço compartilhado
 shared_db = SharedDatabaseService()
+
+# Instância do WhatsApp Service
+whatsapp_service = initialize_whatsapp_service(shared_db)
 
 # Instância do ConversationHandler
 conversation_handler = ConversationHandler(shared_db, whatsapp_service)

@@ -1,9 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from datetime import datetime
 from ..core.database import get_db
 from ..schemas.user import UserCreate, UserUpdate, UserResponse, UserList
+from ..schemas.whatsapp_config import WhatsAppConfigCreate, WhatsAppConfigUpdate, WhatsAppConfigResponse
 from ..crud.user import UserCRUD
+from ..crud.whatsapp_config import WhatsAppConfigCRUD
 
 router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
 
@@ -139,4 +142,94 @@ async def record_user_interaction(
     
     UserCRUD.record_interaction(db, user.number)
     db.refresh(user)
-    return user 
+    return user
+
+# ========= Configuração do WhatsApp =========
+
+@router.get("/config", response_model=WhatsAppConfigResponse)
+async def get_whatsapp_config(db: Session = Depends(get_db)):
+    """Obtém a configuração ativa do WhatsApp"""
+    try:
+        config = WhatsAppConfigCRUD.get_active_config(db)
+        if not config:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "Configuração do WhatsApp não encontrada",
+                    "code": "WHATSAPP_CONFIG_NOT_FOUND"
+                }
+            )
+        return config
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Erro ao obter configuração: {str(e)}"
+        )
+
+@router.put("/config", response_model=WhatsAppConfigResponse)
+async def update_whatsapp_config(
+    config: WhatsAppConfigUpdate, 
+    db: Session = Depends(get_db)
+):
+    """Atualiza a configuração do WhatsApp"""
+    try:
+        # Se não existir configuração ativa, criar uma nova
+        existing_config = WhatsAppConfigCRUD.get_active_config(db)
+        if not existing_config:
+            # Criar nova configuração
+            config_data = WhatsAppConfigCreate(
+                access_token=config.access_token or "",
+                phone_number_id=config.phone_number_id or "",
+                business_account_id=config.business_account_id or "",
+                verify_token=config.verify_token or "",
+                webhook_url=config.webhook_url
+            )
+            return WhatsAppConfigCRUD.create_config(db, config_data)
+        else:
+            # Atualizar configuração existente
+            updated_config = WhatsAppConfigCRUD.update_config(db, config)
+            if not updated_config:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Erro ao atualizar configuração"
+                )
+            return updated_config
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Erro ao atualizar configuração: {str(e)}"
+        )
+
+@router.post("/send")
+async def send_whatsapp_message(
+    message_data: dict,
+    db: Session = Depends(get_db)
+):
+    """Envia uma mensagem via WhatsApp (endpoint de teste)"""
+    try:
+        # Verificar se há configuração ativa
+        config = WhatsAppConfigCRUD.get_active_config(db)
+        if not config:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "WhatsApp não configurado",
+                    "code": "WHATSAPP_NOT_CONFIGURED"
+                }
+            )
+        
+        # Aqui você implementaria a lógica de envio real
+        # Por enquanto, retornamos sucesso simulado
+        return {
+            "success": True,
+            "message_id": f"test_{int(datetime.now().timestamp())}",
+            "status": "sent",
+            "to": message_data.get("to"),
+            "message": message_data.get("message")
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Erro ao enviar mensagem: {str(e)}"
+        ) 

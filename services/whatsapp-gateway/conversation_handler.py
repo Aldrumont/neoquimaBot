@@ -6,6 +6,7 @@ ConversationHandler - Integra sistema de contexto conversacional com WhatsApp Ga
 import logging
 import uuid
 import requests
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -614,7 +615,9 @@ class ConversationHandler:
             "Responda de forma clara, profissional e útil.\n"
             "IMPORTANTE: Use o histórico da conversa acima para manter contexto e continuidade.\n"
             "Se houver informações relevantes acima, use-as para enriquecer sua resposta.\n"
-            "Seja conciso mas completo.\n\n"
+            "NÃO repita saudações ou introduções já feitas anteriormente.\n"
+            "Seja conciso mas completo.\n"
+            "Responda diretamente à pergunta atual do usuário.\n\n"
             "💬 PERGUNTA DO USUÁRIO:\n"
         )
         

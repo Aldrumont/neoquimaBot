@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuração WhatsApp - Neoquima Admin</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-shield-check"></i>
+                Neoquima Admin
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">
+                            <i class="bi bi-house"></i>
+                            Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/users">
+                            <i class="bi bi-people"></i>
+                            Usuários
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/llm">
+                            <i class="bi bi-robot"></i>
+                            LLM
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/whatsapp">
+                            <i class="bi bi-whatsapp"></i>
+                            WhatsApp
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container mt-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col">
+                <h1 class="display-5">
+                    <i class="bi bi-whatsapp text-success"></i>
+                    Configuração WhatsApp
+                </h1>
+                <p class="lead text-muted">Configure o WhatsApp Business API para envio de mensagens</p>
+            </div>
+        </div>
+
+        <!-- Configuration Form -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0">
+                            <i class="bi bi-gear"></i>
+                            Configuração do WhatsApp Business API
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="whatsappConfigForm">
+                            <div class="mb-3">
+                                <label for="accessToken" class="form-label">Access Token</label>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="accessToken" name="accessToken" 
+                                           placeholder="EAA..." required>
+                                    <button class="btn btn-outline-secondary" type="button" onclick="togglePasswordVisibility('accessToken')">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </div>
+                                <small class="form-text text-muted">Token de acesso do WhatsApp Business API</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="phoneNumberId" class="form-label">Phone Number ID</label>
+                                <input type="text" class="form-control" id="phoneNumberId" name="phoneNumberId" 
+                                       placeholder="123456789" required>
+                                <small class="form-text text-muted">ID do número de telefone do WhatsApp Business</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="businessAccountId" class="form-label">Business Account ID</label>
+                                <input type="text" class="form-control" id="businessAccountId" name="businessAccountId" 
+                                       placeholder="123456789" required>
+                                <small class="form-text text-muted">ID da conta empresarial do WhatsApp</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="webhookUrl" class="form-label">Webhook URL</label>
+                                <input type="url" class="form-control" id="webhookUrl" name="webhookUrl" 
+                                       placeholder="https://..." readonly>
+                                <small class="form-text text-muted">URL do webhook (configurada automaticamente)</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="verifyToken" class="form-label">Verify Token</label>
+                                <input type="text" class="form-control" id="verifyToken" name="verifyToken" 
+                                       placeholder="seu_token_aqui" required>
+                                <small class="form-text text-muted">Token para verificação do webhook</small>
+                            </div>
+                            
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="bi bi-check-circle"></i>
+                                    Salvar Configuração
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <!-- Current Configuration -->
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0">
+                            <i class="bi bi-info-circle"></i>
+                            Configuração Atual
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="currentWhatsAppConfig">
+                            <div class="text-center text-muted">
+                                <i class="bi bi-hourglass-split display-4"></i>
+                                <p class="mt-2">Carregando configuração...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Test Section -->
+                <div class="card border-0 shadow-sm mt-3">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0">
+                            <i class="bi bi-chat-dots"></i>
+                            Teste de Envio
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="testNumber" class="form-label">Número para Teste</label>
+                            <input type="tel" class="form-control" id="testNumber" 
+                                   placeholder="+5511999999999">
+                        </div>
+                        <div class="mb-3">
+                            <label for="testMessage" class="form-label">Mensagem de Teste</label>
+                            <textarea class="form-control" id="testMessage" rows="3" 
+                                      placeholder="Digite uma mensagem para testar...">Olá! Esta é uma mensagem de teste do sistema Neoquima.</textarea>
+                        </div>
+                        <div class="d-grid">
+                            <button type="button" class="btn btn-outline-primary" onclick="testWhatsApp()">
+                                <i class="bi bi-send"></i>
+                                Enviar Mensagem de Teste
+                            </button>
+                        </div>
+                        <div id="testResult" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Instructions -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-lightbulb"></i>
+                            Como Configurar
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <ol>
+                            <li><strong>Acesse o Facebook Developers:</strong> <a href="https://developers.facebook.com" target="_blank">developers.facebook.com</a></li>
+                            <li><strong>Crie um app</strong> ou use um existente</li>
+                            <li><strong>Adicione o produto WhatsApp Business API</strong></li>
+                            <li><strong>Configure o webhook:</strong>
+                                <ul>
+                                    <li>URL: <code id="webhookUrlDisplay">https://...</code></li>
+                                    <li>Verify Token: Use o mesmo valor configurado acima</li>
+                                    <li>Webhook Fields: <code>messages</code>, <code>message_deliveries</code></li>
+                                </ul>
+                            </li>
+                            <li><strong>Obtenha as credenciais:</strong>
+                                <ul>
+                                    <li>Access Token (permanente)</li>
+                                    <li>Phone Number ID</li>
+                                    <li>Business Account ID</li>
+                                </ul>
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', filename='js/whatsapp.js') }}"></script>
+</body>
+</html> 

@@ -20,6 +20,11 @@ def llm_config():
     """Página de configuração do LLM"""
     return render_template('llm.html')
 
+@app.route('/whatsapp')
+def whatsapp_config():
+    """Página de configuração do WhatsApp"""
+    return render_template('whatsapp.html')
+
 @app.route('/users')
 def users():
     """Página de gerenciamento de usuários"""
@@ -122,14 +127,63 @@ def update_llm_config():
 def test_llm():
     """Testa o LLM com uma pergunta"""
     try:
-        test_data = request.json
-        llm_service_url = "http://llm-service:8003"
+        message = request.json.get('message', '')
+        if not message:
+            return jsonify({"error": "Mensagem é obrigatória"}), 400
         
-        response = requests.post(f"{llm_service_url}/api/chat", json=test_data, timeout=60)
+        response = requests.post(f"{SHARED_API_URL.replace('/api/v1/whatsapp', '')}/llm/chat", 
+                               json={"message": message})
+        
         if response.status_code == 200:
             return jsonify(response.json())
         else:
-            return jsonify({"error": f"Erro LLM: {response.text}"}), response.status_code
+            return jsonify(response.json()), response.status_code
+    except Exception as e:
+        return jsonify({"error": f"Erro de conexão: {str(e)}"}), 500
+
+@app.route('/api/whatsapp/config')
+def get_whatsapp_config():
+    """Obtém configuração atual do WhatsApp"""
+    try:
+        response = requests.get(f"{SHARED_API_URL.replace('/api/v1/whatsapp', '')}/whatsapp/config")
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": "Erro ao buscar configuração WhatsApp"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Erro de conexão: {str(e)}"}), 500
+
+@app.route('/api/whatsapp/config', methods=['PUT'])
+def update_whatsapp_config():
+    """Atualiza configuração do WhatsApp"""
+    try:
+        config_data = request.json
+        response = requests.put(f"{SHARED_API_URL.replace('/api/v1/whatsapp', '')}/whatsapp/config", json=config_data)
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify(response.json()), response.status_code
+    except Exception as e:
+        return jsonify({"error": f"Erro de conexão: {str(e)}"}), 500
+
+@app.route('/api/whatsapp/test', methods=['POST'])
+def test_whatsapp():
+    """Testa o envio de mensagem via WhatsApp"""
+    try:
+        test_data = request.json
+        number = test_data.get('number')
+        message = test_data.get('message')
+        
+        if not number or not message:
+            return jsonify({"error": "Número e mensagem são obrigatórios"}), 400
+        
+        response = requests.post(f"{SHARED_API_URL.replace('/api/v1/whatsapp', '')}/whatsapp/send", 
+                               json={"to": number, "message": message})
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify(response.json()), response.status_code
     except Exception as e:
         return jsonify({"error": f"Erro de conexão: {str(e)}"}), 500
 

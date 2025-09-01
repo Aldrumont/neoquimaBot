@@ -10,13 +10,47 @@ log = logging.getLogger("uvicorn.error")
 class WhatsAppService:
     """Serviço para envio de mensagens via WhatsApp Business API"""
     
-    def __init__(self):
-        self.token = os.getenv("WHATSAPP_TOKEN")
-        self.phone_id = os.getenv("WHATSAPP_PHONE_ID")
-        self.base_url = f"https://graph.facebook.com/v22.0/{self.phone_id}/messages"
+    def __init__(self, shared_db_service=None):
+        self.shared_db = shared_db_service
+        self.token = None
+        self.phone_id = None
+        self.base_url = None
+        
+        # Tentar carregar configuração inicial
+        self._load_config()
+    
+    def _load_config(self):
+        """Carrega configuração do WhatsApp do banco de dados"""
+        if not self.shared_db:
+            log.warning("SharedDatabaseService não disponível. Usando variáveis de ambiente.")
+            self.token = os.getenv("WHATSAPP_TOKEN")
+            self.phone_id = os.getenv("WHATSAPP_PHONE_ID")
+        else:
+            try:
+                config = self.shared_db.get_whatsapp_config()
+                if config and not config.get("error"):
+                    self.token = config.get("access_token")
+                    self.phone_id = config.get("phone_number_id")
+                    log.info("Configuração do WhatsApp carregada do banco de dados")
+                else:
+                    log.warning("Configuração do WhatsApp não encontrada no banco. Usando variáveis de ambiente.")
+                    self.token = os.getenv("WHATSAPP_TOKEN")
+                    self.phone_id = os.getenv("WHATSAPP_PHONE_ID")
+            except Exception as e:
+                log.error(f"Erro ao carregar configuração do WhatsApp: {e}")
+                self.token = os.getenv("WHATSAPP_TOKEN")
+                self.phone_id = os.getenv("WHATSAPP_PHONE_ID")
+        
+        if self.phone_id:
+            self.base_url = f"https://graph.facebook.com/v23.0/{self.phone_id}/messages"
         
         if not self.token or not self.phone_id:
             log.warning("WhatsApp credentials not configured. Messages will be logged only.")
+    
+    def refresh_config(self):
+        """Recarrega configuração do banco de dados"""
+        if self.shared_db:
+            self._load_config()
     
     def send_text_message(self, to_number: str, message: str) -> Dict[str, Any]:
         """
@@ -233,5 +267,11 @@ class WhatsAppService:
         """
         return self.send_text_message(to_number, response_text)
 
-# Instância global do serviço
-whatsapp_service = WhatsAppService()
+# Instância global do serviço (será configurada pelo app.py)
+whatsapp_service = None
+
+def initialize_whatsapp_service(shared_db_service):
+    """Inicializa o serviço WhatsApp com o shared_db"""
+    global whatsapp_service
+    whatsapp_service = WhatsAppService(shared_db_service)
+    return whatsapp_service

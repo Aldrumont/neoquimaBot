@@ -88,11 +88,7 @@ services:
     environment:
       - OLLAMA_URL=http://ollama:11434
       - SHARED_DATABASE_URL=http://shared-database-api:8000
-      - DEFAULT_MODEL=llama2:3b
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEFAULT_MODEL=qwen2.5:3b-instruct-q4_K_M
     depends_on:
       - ollama
     healthcheck:
@@ -108,11 +104,8 @@ services:
     build: ../services/whatsapp-gateway
     environment:
       VERIFY_TOKEN: ${VERIFY_TOKEN:-neoquima_webhook_2024}
-      ADMIN_TOKEN: ${ADMIN_TOKEN}
       DATABASE_URL: ${DATABASE_URL:-postgresql://neoquima_admin:neoquima_admin_pass_2024@shared-postgres:5432/neoquima_shared}
       SHARED_DATABASE_URL: http://shared-database-api:8000
-      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}
-      WHATSAPP_PHONE_ID: ${WHATSAPP_PHONE_ID}
       # allowlist inicial (opcional). Ex.: +5511999998888,+353831112222
       ALLOWLIST: ""
       # Debug: Salvar payloads LLM em arquivos JSON (false por padrão)
@@ -120,6 +113,8 @@ services:
     ports: ["8081:8000"]
     depends_on:
       shared-postgres:
+        condition: service_healthy
+      shared-database-api:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

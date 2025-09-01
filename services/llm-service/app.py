@@ -139,7 +139,10 @@ def call_external_via_litellm(message: str, config: LLMConfig) -> Dict[str, Any]
         if config.provider == "openai":
             # Usar variável de ambiente se config.api_key for None
             if config.api_key:
+                logger.info(f"DEBUG: config.api_key length: {len(config.api_key)}")
+                logger.info(f"DEBUG: config.api_key prefix: {config.api_key[:50]}...")
                 os.environ["OPENAI_API_KEY"] = config.api_key
+                logger.info(f"DEBUG: os.environ OPENAI_API_KEY length: {len(os.environ.get('OPENAI_API_KEY', ''))}")
             if config.base_url:
                 os.environ["OPENAI_API_BASE"] = config.base_url
             model_name = config.model  # Usar o modelo da configuração

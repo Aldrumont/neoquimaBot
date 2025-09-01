@@ -51,16 +51,25 @@ class SharedDatabaseService:
     
     def get_user_by_number(self, number: str) -> Optional[Dict[str, Any]]:
         """Busca usuário por número"""
-        params = {"search": number}
-        response = self._make_request("GET", "/whatsapp/users", params=params)
-        
-        if "error" in response:
+        try:
+            response = self._make_request("GET", "/whatsapp/users", params={"search": number, "active_only": True})
+            if response.get("users") and len(response["users"]) > 0:
+                return response["users"][0]
             return None
-        
-        users = response.get("users", [])
-        if users:
-            return users[0]  # Retorna o primeiro usuário encontrado
-        return None
+        except Exception as e:
+            print(f"❌ Erro ao buscar usuário por número: {e}")
+            return None
+    
+    def get_whatsapp_config(self) -> Optional[Dict[str, Any]]:
+        """Busca configuração ativa do WhatsApp"""
+        try:
+            response = self._make_request("GET", "/whatsapp/config")
+            if response and not response.get("error"):
+                return response
+            return None
+        except Exception as e:
+            print(f"❌ Erro ao buscar configuração do WhatsApp: {e}")
+            return None
     
     def create_user(self, user_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Cria um novo usuário"""
